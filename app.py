@@ -11,7 +11,8 @@ import numpy as np
 import plotly.graph_objects as go
 import plotly.io as pio
 import math
-import traceback
+import traceback  # для детальной печати ошибок
+
 # Импорты из core
 from core.csv_utils import read_file_auto
 from core.preprocessing import preprocess_data
@@ -118,7 +119,11 @@ def generate_correlation_graph(correlation_matrix, threshold=0.3):
 
 def generate_results(df_processed, threshold, params, original_filename, process_details, correlation_details,
                      target_column=None):
-    # Приводим target_column к строке, если он не None
+    # Принудительно преобразуем все столбцы в числа (коэрциция NaN)
+    for col in df_processed.columns:
+        df_processed[col] = pd.to_numeric(df_processed[col], errors='coerce')
+    df_processed = df_processed.fillna(0)
+
     if target_column is not None:
         target_column = str(target_column).strip()
 
@@ -147,17 +152,23 @@ def generate_results(df_processed, threshold, params, original_filename, process
     # Подготовка для алгоритма
     column_names = list(df_processed.columns if not filtered else df_filtered.columns)
     N = len(column_names)
-    Adj_w = np.abs(correlation_matrix.values)
+    # Убедимся, что Adj_w – числовая матрица
+    Adj_w = np.abs(correlation_matrix.values.astype(float))
 
-    w_max, xD_best, plot_data = do_n_launches_capped(
-        Adj_w,
-        params['n_launches'],
-        params['n_solutions'],
-        params['frac'],
-        params['q'],
-        params['cap'],
-        vocal=False
-    )
+    try:
+        w_max, xD_best, plot_data = do_n_launches_capped(
+            Adj_w,
+            params['n_launches'],
+            params['n_solutions'],
+            params['frac'],
+            params['q'],
+            params['cap'],
+            vocal=False
+        )
+    except Exception as e:
+        print("Ошибка в алгоритме:")
+        traceback.print_exc()
+        raise
 
     selected_indices = xD_best.nonzero()[0]
     selected_columns = [column_names[i] for i in selected_indices if i < len(column_names)]
@@ -517,20 +528,20 @@ async def survey_results(request: Request, survey_id: int, db: Session = Depends
 
 @app.post("/surveys/{survey_id}/analyze")
 async def analyze_survey(
-    survey_id: int,
-    request: Request,
-    db: Session = Depends(get_db),
-    threshold: float = Form(0.3),
-    n_launches: int = Form(10),
-    n_solutions: int = Form(100),
-    cap: int = Form(1000),
-    frac: float = Form(0.35),
-    q: float = Form(1.0),
-    drop_first: bool = Form(False),
-    fill_na_zero: bool = Form(True),
-    encode_cat: bool = Form(True),
-    max_cat: int = Form(10),
-    target_column: str = Form("")
+        survey_id: int,
+        request: Request,
+        db: Session = Depends(get_db),
+        threshold: float = Form(0.3),
+        n_launches: int = Form(10),
+        n_solutions: int = Form(100),
+        cap: int = Form(1000),
+        frac: float = Form(0.35),
+        q: float = Form(1.0),
+        drop_first: bool = Form(False),
+        fill_na_zero: bool = Form(True),
+        encode_cat: bool = Form(True),
+        max_cat: int = Form(10),
+        target_column: str = Form("")
 ):
     # Приводим target_column к строке и очищаем
     target_column = str(target_column).strip() if target_column else ""
@@ -552,7 +563,7 @@ async def analyze_survey(
     # Строим DataFrame из ответов
     data = {}
     for q in questions:
-        col_name = f"q{q.id}"          # имя столбца = q<id>
+        col_name = f"q{q.id}"  # имя столбца = q<id>
         values = []
         for r in responses:
             # Получаем ответ на данный вопрос
@@ -665,11 +676,12 @@ async def analyze_survey(
         "results": results,
         "target_column": target_column
     })
-
-@app.exception_handler(Exception)
-async def generic_exception_handler(request, exc):
-    print("=" * 60)
-    print("Ошибка:")
-    traceback.print_exc()
-    print("=" * 60)
-    return HTMLResponse(f"Внутренняя ошибка сервера: {exc}", status_code=500)
+@app.get("/download/{filename}")
+async def download_file(filename: str):
+    """
+    Скачивание файла результатов (корреляция или алгоритм).
+    """
+    file_path = os.path.join(RESULTS_DIR, filename)
+    if os.path.exists(file_path):
+        return FileResponse(file_path, media_type='application/octet-stream', filename=filename)
+    raise HTTPException(status_code=404, detail="File not found")

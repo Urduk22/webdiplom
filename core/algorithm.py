@@ -75,8 +75,13 @@ def add_positive_to_D(xD_, ew_, N):
     return xD_
 
 def add_fraction_of_positive_to_D(xD, ew, N, frac=0.5, q=0):
-    cardinality_of_U = q if q > 0 else max(1.0, np.floor(np.sum([ew > 0]) * frac))
-    order = np.arange(cardinality_of_U, dtype=int)
+    # Защита от нечислового q
+    try:
+        q_val = float(q)
+    except (TypeError, ValueError):
+        q_val = 0
+    cardinality_of_U = q_val if q_val > 0 else max(1.0, np.floor(np.sum([ew > 0]) * frac))
+    order = np.arange(int(cardinality_of_U), dtype=int)
     np.random.shuffle(order)
     for i in order:
         pos = ew.argsort()[::-1][i]
@@ -102,15 +107,31 @@ def reduce_to_Min_Dom_Vert_Weig(Adj, xD, N):
     return xD
 
 def do_n_launches_capped(Adj_w, N_launches, N_solutions, frac, q, cap, vocal=True):
+    # Защита от нечисловых аргументов
+    try:
+        N_launches = int(N_launches)
+        N_solutions = int(N_solutions)
+        frac = float(frac)
+        q_val = float(q)
+        cap = int(cap)
+    except (TypeError, ValueError):
+        N_launches = 10
+        N_solutions = 100
+        frac = 0.35
+        q_val = 1.0
+        cap = 1000
+
     N = Adj_w.shape[0]
-    print(f"    Алгоритм: N={N}, запусков={N_launches}, решений={N_solutions}")
+    if vocal:
+        print(f"    Алгоритм: N={N}, запусков={N_launches}, решений={N_solutions}")
     counter = 0
     plot_sol_to_sol = []
     xD_best_all_launches = np.zeros(N, dtype=int)
     w_max_all_launches = 0
 
     for u in range(N_launches):
-        print(f"    Запуск {u + 1}/{N_launches}...")
+        if vocal:
+            print(f"    Запуск {u + 1}/{N_launches}...")
         xD_buff = reduce_to_Min_Dom_Vert_Weig(Adj_w, np.ones(N, dtype=int), N)
         cw_buff = count_Cut_Weight(Adj_w, xD_buff.copy(), N)
 
@@ -123,7 +144,7 @@ def do_n_launches_capped(Adj_w, N_launches, N_solutions, frac, q, cap, vocal=Tru
         sol_count = 0
         while sol_count < N_solutions:
             ew_t = count_effective_weight(Adj_w, xD_buff.copy(), N)
-            xD_t = add_fraction_of_positive_to_D(xD_buff.copy(), ew_t.copy(), N, frac=frac, q=q)
+            xD_t = add_fraction_of_positive_to_D(xD_buff.copy(), ew_t.copy(), N, frac=frac, q=q_val)
             xD_t = reduce_to_Min_Dom_Vert_Weig(Adj_w, xD_t.copy(), N)
             cw_of_xD_t = count_Cut_Weight(Adj_w, xD_t, N)
 
