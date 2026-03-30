@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Результаты опроса: {{ survey.title }}</title>
+    <meta charset="utf-8">
+    <style>
+        body { font-family: Arial; margin: 40px; background: #f5f5f5; }
+        .container { max-width: 1000px; margin: auto; background: white; padding: 30px; border-radius: 8px; }
+        h1 { color: #2c5aa0; }
+        .nav { background: #2c5aa0; padding: 10px; margin-bottom: 20px; border-radius: 5px; }
+        .nav a { color: white; margin-right: 20px; text-decoration: none; font-weight: bold; }
+        .nav a:hover { text-decoration: underline; }
+        .summary { background: #e9ecef; padding: 15px; border-radius: 5px; margin: 20px 0; }
+        table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background: #f1f1f1; }
+        .btn { display: inline-block; background: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; margin-right: 10px; }
+        .btn:hover { background: #0056b3; }
+        .param-group { background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0; }
+        .param-row { display: flex; align-items: center; margin-bottom: 10px; }
+        .param-row label { width: 150px; margin: 0; }
+        .param-row input { width: 80px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="nav">
+            <a href="/">Главная (загрузка файла)</a>
+            <a href="/surveys/new">Создать опрос</a>
+            <a href="/surveys">Список опросов</a>
+        </div>
+        <h1>Результаты опроса: {{ survey.title }}</h1>
+        <div class="summary">
+            <p><strong>Всего ответов:</strong> {{ responses_count }}</p>
+            <p><strong>Дата создания:</strong> {{ survey.created_at.strftime('%d.%m.%Y %H:%M') }}</p>
+        </div>
+
+        <h3>Анализ данных</h3>
+        <form action="/surveys/{{ survey.id }}/analyze" method="post">
+            <div class="param-group">
+                <h4>Настройки предобработки</h4>
+                <label><input type="checkbox" name="drop_first"> Удалить первый столбец</label>
+                <label><input type="checkbox" name="fill_na_zero" checked> Замена пустых на 0</label>
+                <label><input type="checkbox" name="encode_cat" checked> Кодировать категории</label>
+                <label>Макс. категорий: <input type="number" name="max_cat" value="10" min="2"></label>
+                <label>Порог корреляции: <input type="number" name="threshold" value="0.3" step="0.05" min="0" max="1"></label>
+                <label>Целевой столбец (необязательно):
+                    <input type="text" name="target_column" placeholder="название столбца" size="30">
+                </label>
+                <small>Укажите название столбца (например, q1) для направленного отбора</small>
+            </div>
+
+            <div class="param-group">
+                <h4>Параметры алгоритма</h4>
+                <div class="param-row">
+                    <label>Запусков:</label>
+                    <input type="number" name="n_launches" value="10" min="1">
+                </div>
+                <div class="param-row">
+                    <label>Решений:</label>
+                    <input type="number" name="n_solutions" value="100" min="1">
+                </div>
+                <div class="param-row">
+                    <label>Cap:</label>
+                    <input type="number" name="cap" value="1000" min="1">
+                </div>
+                <div class="param-row">
+                    <label>Frac:</label>
+                    <input type="number" name="frac" value="0.35" step="0.05" min="0" max="1">
+                </div>
+                <div class="param-row">
+                    <label>q:</label>
+                    <input type="number" name="q" value="1.0" step="0.1" min="0">
+                </div>
+            </div>
+
+            <button type="submit" class="btn">Запустить анализ</button>
+        </form>
+
+        {% if error %}
+            <div class="error" style="color: red; margin-top: 20px;">{{ error }}</div>
+        {% endif %}
+
+        {% if results %}
+        <hr>
+        <h3>Результаты анализа</h3>
+        <p><strong>Максимальный вес:</strong> {{ results.w_max }}</p>
+        <p><strong>Выбрано столбцов:</strong> {{ results.selected_columns|length }}</p>
+        {% if target_column %}
+            <p><strong>Целевой столбец:</strong> {{ target_column }}</p>
+        {% endif %}
+        <h4>Выбранные вопросы:</h4>
+        <ul>
+            {% for col in results.selected_columns %}
+            <li>{{ col }}</li>
+            {% endfor %}
+        </ul>
+        <a href="/download/{{ results.correlation_file }}" class="btn">Скачать матрицу корреляции</a>
+        <a href="/download/{{ results.algorithm_file }}" class="btn">Скачать результаты алгоритма</a>
+        {% endif %}
+
+        <br><br>
+        <a href="/">← На главную</a>
+    </div>
+</body>
+</html>

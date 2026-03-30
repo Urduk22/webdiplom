@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ survey.title }}</title>
+    <meta charset="utf-8">
+    <style>
+        body { font-family: Arial; margin: 40px; background: #f5f5f5; }
+        .container { max-width: 800px; margin: auto; background: white; padding: 30px; border-radius: 8px; }
+        h1 { color: #2c5aa0; }
+        .question { margin-bottom: 25px; }
+        .options { margin-left: 20px; }
+        .option-item { margin: 5px 0; }
+        button { background: #28a745; color: white; border: none; padding: 10px 30px; font-size: 16px; border-radius: 5px; cursor: pointer; }
+        button:hover { background: #218838; }
+    </style>
+</head>
+<body>
+    <div class="nav">
+        <a href="/">Главная (загрузка файла)</a>
+        <a href="/surveys/new">Создать опрос</a>
+        <a href="/surveys">Список опросов</a>
+    </div>
+    <div class="container">
+        <h1>{{ survey.title }}</h1>
+        {% if survey.description %}
+            <p>{{ survey.description }}</p>
+        {% endif %}
+        <hr>
+
+        <form action="/surveys/{{ survey.id }}/submit" method="post">
+            {% for q in survey.questions %}
+            <div class="question">
+                <p><strong>{{ q.order }}. {{ q.text }}</strong></p>
+                <div class="options">
+                    {% if q.question_type == 'text' %}
+                        <textarea name="q_{{ q.id }}" rows="3" style="width:100%"></textarea>
+
+                    {% elif q.question_type == 'scale' %}
+                        <input type="number" name="q_{{ q.id }}" min="1" max="10" step="1" value="5">
+
+                    {% elif q.question_type == 'single' %}
+                        {% for opt in q.options %}
+                        <div class="option-item">
+                            <input type="radio" name="q_{{ q.id }}" value="{{ opt.id }}"> {{ opt.text }}
+                        </div>
+                        {% endfor %}
+
+                    {% elif q.question_type == 'multiple' %}
+                        {% for opt in q.options %}
+                        <div class="option-item">
+                            <input type="checkbox" name="q_{{ q.id }}" value="{{ opt.id }}"> {{ opt.text }}
+                        </div>
+                        {% endfor %}
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+
+            <button type="submit">Отправить ответы</button>
+        </form>
+    </div>
+</body>
+</html>
