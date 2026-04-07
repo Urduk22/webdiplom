@@ -1,9 +1,9 @@
 import os
 import shutil
 import uuid
+import json
 import io
 import tempfile
-import pickle
 from datetime import datetime
 from fastapi import FastAPI, File, UploadFile, Form, Request, HTTPException, Depends
 from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse, StreamingResponse
@@ -25,15 +25,15 @@ from reportlab.pdfbase.ttfonts import TTFont
 # ДОБАВИТЬ В НАЧАЛО APP.PY НОВЫЕ ИМПОРТЫ
 from fastapi.security import OAuth2PasswordRequestForm
 from auth import authenticate_user, create_access_token, get_current_user, get_password_hash
-import json
-import io
 # Импорты из core
 from core.csv_utils import read_file_auto
 from core.preprocessing import preprocess_data
 from core.correlation import apply_correlation_threshold
 from core.algorithm import do_n_launches_capped
 from core.schemas import AnalysisParams, AnalysisResponse, FileUploadResponse
-
+from models import User, Survey, Question, Option, Response, Answer
+from auth import authenticate_user, create_access_token, get_current_user, get_password_hash
+from fastapi.security import OAuth2PasswordRequestForm
 # Импорты для БД
 from database import engine, Base, get_db
 from models import Survey, Question, Option, Response, Answer
@@ -309,7 +309,156 @@ Cap: {params['cap']}, Frac: {params['frac']}, q: {params['q']}
         "target_column": target_column,
         "original_filename": original_filename
     }
+def generate_survey_stats(survey_id: int, db: Session):
+    """Генерирует статистику по опросу: для single – варианты и проценты, для scale – среднее/медиана, для text – список ответов."""
+    survey = db.query(Survey).filter(Survey.id == survey_id).first()
+    if not survey:
+        return None
+    questions = db.query(Question).filter(Question.survey_id == survey_id).order_by(Question.order).all()
+    stats = []
+    for q in questions:
+        answers = db.query(Answer).filter(Answer.question_id == q.id).all()
+        total = len(answers)
+        if q.question_type == 'single':
+            options = db.query(Option).filter(Option.question_id == q.id).all()
+            opt_counts = {opt.id: 0 for opt in options}
+            for a in answers:
+                if a.option_id and a.option_id in opt_counts:
+                    opt_counts[a.option_id] += 1
+            stats.append({
+                'question_text': q.text,
+                'question_type': 'single',
+                'options': [
+                    {
+                        'text': opt.text,
+                        'count': opt_counts[opt.id],
+                        'percent': (opt_counts[opt.id] / total * 100) if total else 0
+                    }
+                    for opt in options
+                ]
+            })
+        elif q.question_type == 'scale':
+            values = [a.numeric_value for a in answers if a.numeric_value is not None]
+            mean_val = np.mean(values) if values else None
+            median_val = np.median(values) if values else None
+            stats.append({
+                'question_text': q.text,
+                'question_type': 'scale',
+                'min': q.scale_min,
+                'max': q.scale_max,
+                'mean': mean_val,
+                'median': median_val,
+                'distribution': {int(v): values.count(v) for v in set(values)} if values else {}
+            })
+        else:  # text
+            text_answers = [a.text_value for a in answers if a.text_value]
+            stats.append({
+                'question_text': q.text,
+                'question_type': 'text',
+                'answers': text_answers
+            })
+    return stats
+def generate_pdf_stats_report(survey, stats):
+    """Генерирует PDF-отчёт со статистикой опроса (проценты, голоса, графики)."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import inch
+    import tempfile
+    import plotly.graph_objects as go
+    import plotly.io as pio
 
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=72, leftMargin=72, topMargin=72, bottomMargin=72)
+    styles = getSampleStyleSheet()
+    # Добавляем стиль для кириллицы (если не зарегистрирован шрифт, используем Helvetica)
+    try:
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+        pdfmetrics.registerFont(TTFont('DejaVuSans', 'DejaVuSans.ttf'))
+        font_name = 'DejaVuSans'
+    except:
+        font_name = 'Helvetica'
+    styles.add(ParagraphStyle(name='Russian', fontName=font_name, fontSize=10, leading=14))
+    title_style = ParagraphStyle(name='Title', fontName=font_name, fontSize=16, leading=20, alignment=1)
+
+    story = []
+    story.append(Paragraph(f"Статистика опроса: {survey.title}", title_style))
+    story.append(Spacer(1, 12))
+    story.append(Paragraph(f"Описание: {survey.description or ''}", styles['Russian']))
+    story.append(Paragraph(f"Дата создания: {survey.created_at.strftime('%d.%m.%Y %H:%M')}", styles['Russian']))
+    story.append(Spacer(1, 12))
+
+    for q_stat in stats:
+        story.append(Paragraph(f"<b>{q_stat['question_text']}</b>", styles['Heading2']))
+        if q_stat['question_type'] == 'single':
+            data = [['Вариант', 'Голосов', 'Процент']]
+            for opt in q_stat['options']:
+                data.append([opt['text'], opt['count'], f"{opt['percent']:.1f}%"])
+            t = Table(data)
+            t.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (-1,0), colors.grey),
+                ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
+                ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+                ('FONTNAME', (0,0), (-1,-1), font_name),
+                ('GRID', (0,0), (-1,-1), 0.5, colors.black),
+            ]))
+            story.append(t)
+            # Круговая диаграмма через Plotly -> PNG
+            try:
+                fig = go.Figure(data=[go.Pie(labels=[opt['text'] for opt in q_stat['options']],
+                                             values=[opt['count'] for opt in q_stat['options']])])
+                fig.update_layout(title="Распределение ответов")
+                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                    fig.write_image(tmp.name, format='png')
+                    story.append(Image(tmp.name, width=4*inch, height=3*inch))
+                    os.unlink(tmp.name)
+            except:
+                story.append(Paragraph("(не удалось построить график)", styles['Russian']))
+        elif q_stat['question_type'] == 'scale':
+            story.append(Paragraph(f"Минимум: {q_stat['min']}, Максимум: {q_stat['max']}", styles['Russian']))
+            story.append(Paragraph(f"Среднее: {q_stat['mean']:.2f} (если есть данные)", styles['Russian']))
+            story.append(Paragraph(f"Медиана: {q_stat['median']:.2f}", styles['Russian']))
+            if q_stat['distribution']:
+                data = [['Оценка', 'Количество']] + [[k, v] for k, v in q_stat['distribution'].items()]
+                t = Table(data)
+                t.setStyle(TableStyle([('GRID', (0,0), (-1,-1), 0.5, colors.black)]))
+                story.append(t)
+        else:  # text
+            story.append(Paragraph("Текстовые ответы (первые 10):", styles['Russian']))
+            for ans in q_stat['answers'][:10]:
+                story.append(Paragraph(f"- {ans}", styles['Russian']))
+        story.append(Spacer(1, 12))
+
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
+def generate_results_excel(survey, stats):
+    """Генерирует Excel-файл в формате: вопрос, варианты, проценты, число голосов."""
+    output = io.BytesIO()
+    rows = []
+    for q_stat in stats:
+        rows.append([q_stat['question_text'], "", "", ""])  # строка вопроса
+        if q_stat['question_type'] == 'single':
+            for opt in q_stat['options']:
+                rows.append(["", opt['text'], f"{opt['percent']:.1f}%", opt['count']])
+        elif q_stat['question_type'] == 'scale':
+            rows.append(["", f"Среднее: {q_stat['mean']:.2f}", "", ""])
+            rows.append(["", f"Медиана: {q_stat['median']:.2f}", "", ""])
+            rows.append(["", "Распределение:", "", ""])
+            for val, cnt in q_stat['distribution'].items():
+                rows.append(["", f"{val}", f"{(cnt/len(q_stat['answers'])*100):.1f}%", cnt])
+        else:
+            rows.append(["", "Текстовые ответы (первые 20):", "", ""])
+            for ans in q_stat['answers'][:20]:
+                rows.append(["", ans, "", ""])
+        rows.append(["", "", "", ""])  # разделитель между вопросами
+    df = pd.DataFrame(rows, columns=['Вопрос', 'Варианты ответа', 'Проценты', 'Число голосов'])
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, sheet_name='Результаты', index=False)
+    output.seek(0)
+    return output
 # -------------------- ВЕБ-ИНТЕРФЕЙС --------------------
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
@@ -688,6 +837,8 @@ async def analyze_survey(
         "method": method,
         "top_k": top_k
     })
+
+# ==================== АУТЕНТИФИКАЦИЯ ====================
 @app.post("/register")
 async def register(username: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
     existing = db.query(User).filter(User.username == username).first()
@@ -706,88 +857,181 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = 
         raise HTTPException(status_code=401, detail="Incorrect username or password")
     access_token = create_access_token(data={"sub": user.username})
     return {"access_token": access_token, "token_type": "bearer"}
-def generate_survey_stats(survey_id, db):
-    survey = db.query(Survey).filter(Survey.id == survey_id).first()
+
+# ==================== ОПРОСЫ С АУТЕНТИФИКАЦИЕЙ ====================
+@app.get("/surveys")
+async def list_surveys(request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    surveys = db.query(Survey).filter(Survey.owner_id == current_user.id).order_by(Survey.created_at.desc()).all()
+    return templates.TemplateResponse("surveys_list.html", {"request": request, "surveys": surveys})
+
+@app.get("/surveys/new", response_class=HTMLResponse)
+async def create_survey_form(request: Request, current_user: User = Depends(get_current_user)):
+    return templates.TemplateResponse("create_survey.html", {"request": request})
+
+@app.post("/api/surveys", response_class=RedirectResponse)
+async def create_survey_api(
+    survey_data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    title = survey_data.get("title")
+    description = survey_data.get("description", "")
+    questions_data = survey_data.get("questions", [])
+
+    db_survey = Survey(title=title, description=description, owner_id=current_user.id)
+    db.add(db_survey)
+    db.commit()
+    db.refresh(db_survey)
+
+    for idx, q in enumerate(questions_data):
+        db_q = Question(
+            survey_id=db_survey.id,
+            text=q["text"],
+            question_type=q["question_type"],
+            order=q.get("order", idx),
+            scale_min=q.get("scale_min", 1),
+            scale_max=q.get("scale_max", 10)
+        )
+        db.add(db_q)
+        db.commit()
+        db.refresh(db_q)
+        if q["question_type"] in ["single", "multiple"]:
+            for opt_text in q.get("options", []):
+                db_opt = Option(question_id=db_q.id, text=opt_text)
+                db.add(db_opt)
+        db.commit()
+
+    return RedirectResponse(url=f"/surveys/{db_survey.id}", status_code=303)
+
+@app.get("/surveys/{survey_id}/results")
+async def survey_results(
+    request: Request,
+    survey_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    survey = db.query(Survey).filter(Survey.id == survey_id, Survey.owner_id == current_user.id).first()
     if not survey:
-        return None
-    questions = db.query(Question).filter(Question.survey_id == survey_id).order_by(Question.order).all()
-    stats = []
-    for q in questions:
-        answers = db.query(Answer).filter(Answer.question_id == q.id).all()
-        total = len(answers)
-        if q.question_type == 'single':
-            options = db.query(Option).filter(Option.question_id == q.id).all()
-            opt_counts = {opt.id: 0 for opt in options}
-            for a in answers:
-                if a.option_id:
-                    opt_counts[a.option_id] += 1
-            stat = {
-                'question_text': q.text,
-                'question_type': q.question_type,
-                'options': [{'text': opt.text, 'count': opt_counts[opt.id], 'percent': (opt_counts[opt.id]/total)*100 if total else 0} for opt in options]
-            }
-        elif q.question_type == 'scale':
-            # для шкалы – среднее, медиана, распределение
-            values = [a.numeric_value for a in answers if a.numeric_value is not None]
-            stat = {
-                'question_text': q.text,
-                'question_type': 'scale',
-                'min': q.scale_min,
-                'max': q.scale_max,
-                'mean': np.mean(values) if values else None,
-                'median': np.median(values) if values else None,
-                'distribution': {val: values.count(val) for val in set(values)}
-            }
-        else:  # text
-            stat = {'question_text': q.text, 'question_type': 'text', 'answers': [a.text_value for a in answers if a.text_value]}
-        stats.append(stat)
-    return stats
+        return HTMLResponse("Опрос не найден или нет доступа", status_code=404)
+    responses_count = db.query(Response).filter(Response.survey_id == survey_id).count()
+    stats = generate_survey_stats(survey_id, db)  # функция описана ранее
+    return templates.TemplateResponse("survey_results.html", {
+        "request": request,
+        "survey": survey,
+        "responses_count": responses_count,
+        "stats": stats
+    })
+
+# ==================== ЭКСПОРТ СТАТИСТИКИ И РЕЗУЛЬТАТОВ ====================
 @app.get("/surveys/{survey_id}/export/stats")
-async def export_survey_stats_pdf(survey_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def export_survey_stats_pdf(
+    survey_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    survey = db.query(Survey).filter(Survey.id == survey_id, Survey.owner_id == current_user.id).first()
+    if not survey:
+        raise HTTPException(404, "Опрос не найден")
     stats = generate_survey_stats(survey_id, db)
-    # Генерация PDF с отчётом
-    # (аналогично generate_pdf_report, но с другой структурой)
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4)
-    story = []
-    styles = getSampleStyleSheet()
-    story.append(Paragraph(f"Статистика опроса: {stats[0]['survey_title']}", styles['Title']))
-    for q_stat in stats:
-        story.append(Paragraph(q_stat['question_text'], styles['Heading2']))
-        if q_stat['question_type'] == 'single':
-            data = [['Вариант', 'Голосов', 'Процент']]
-            for opt in q_stat['options']:
-                data.append([opt['text'], opt['count'], f"{opt['percent']:.1f}%"])
-            t = Table(data)
-            t.setStyle(TableStyle([('GRID', (0,0), (-1,-1), 0.5, colors.black)]))
-            story.append(t)
-        elif q_stat['question_type'] == 'scale':
-            story.append(Paragraph(f"Среднее: {q_stat['mean']:.2f}, Медиана: {q_stat['median']:.2f}", styles['Normal']))
-            # можно добавить гистограмму
-    doc.build(story)
-    buffer.seek(0)
-    return StreamingResponse(buffer, media_type="application/pdf", headers={"Content-Disposition": f"attachment; filename=survey_{survey_id}_stats.pdf"})
+    # Генерация PDF (используйте generate_pdf_stats_report)
+    pdf_buffer = generate_pdf_stats_report(survey, stats)
+    return StreamingResponse(pdf_buffer, media_type="application/pdf", headers={"Content-Disposition": f"attachment; filename=survey_{survey_id}_stats.pdf"})
+
 @app.get("/surveys/{survey_id}/export/results")
-async def export_survey_results_excel(survey_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def export_survey_results_excel(
+    survey_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    survey = db.query(Survey).filter(Survey.id == survey_id, Survey.owner_id == current_user.id).first()
+    if not survey:
+        raise HTTPException(404, "Опрос не найден")
     stats = generate_survey_stats(survey_id, db)
-    # Формируем DataFrame в нужном формате
-    rows = []
-    for q_stat in stats:
-        rows.append([q_stat['question_text'], "", "", ""])  # строка вопроса
-        if q_stat['question_type'] == 'single':
-            for opt in q_stat['options']:
-                rows.append(["", opt['text'], f"{opt['percent']:.1f}%", opt['count']])
-        elif q_stat['question_type'] == 'scale':
-            rows.append(["", f"Среднее: {q_stat['mean']:.2f}", "", ""])
-            rows.append(["", f"Медиана: {q_stat['median']:.2f}", "", ""])
-        else:
-            rows.append(["", "Текстовые ответы:", "", ""])
-            for ans in q_stat.get('answers', [])[:20]:
-                rows.append(["", ans, "", ""])
-        rows.append(["", "", "", ""])  # разделитель
-    df = pd.DataFrame(rows, columns=['Вопрос', 'Варианты ответа', 'Проценты', 'Число голосов'])
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, sheet_name='Результаты', index=False)
-    output.seek(0)
+    output = generate_results_excel(survey, stats)
     return StreamingResponse(output, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": f"attachment; filename=survey_{survey_id}_results.xlsx"})
+
+# ==================== ИМПОРТ ОПРОСА (3 формата) ====================
+@app.post("/surveys/import")
+async def import_survey(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    filename = file.filename
+    ext = os.path.splitext(filename)[1].lower()
+    content = await file.read()
+
+    if ext == '.json':
+        data = json.loads(content)
+        survey_data = parse_json_import(data)
+    elif ext == '.csv':
+        df = pd.read_csv(io.BytesIO(content))
+        survey_data = parse_csv_import(df)
+    elif ext in ['.xls', '.xlsx']:
+        df = pd.read_excel(io.BytesIO(content))
+        survey_data = parse_excel_import(df)
+    else:
+        raise HTTPException(400, "Неподдерживаемый формат. Используйте JSON, CSV или Excel")
+
+    db_survey = Survey(title=survey_data["title"], description=survey_data.get("description", ""), owner_id=current_user.id)
+    db.add(db_survey)
+    db.commit()
+    db.refresh(db_survey)
+
+    for idx, q in enumerate(survey_data["questions"]):
+        db_q = Question(
+            survey_id=db_survey.id,
+            text=q["text"],
+            question_type=q["question_type"],
+            order=q.get("order", idx),
+            scale_min=q.get("scale_min", 1),
+            scale_max=q.get("scale_max", 10)
+        )
+        db.add(db_q)
+        db.commit()
+        db.refresh(db_q)
+        if q["question_type"] in ["single", "multiple"]:
+            for opt_text in q.get("options", []):
+                db_opt = Option(question_id=db_q.id, text=opt_text)
+                db.add(db_opt)
+        db.commit()
+
+    return RedirectResponse(url=f"/surveys/{db_survey.id}", status_code=303)
+
+# Функции парсеров (вставить в app.py)
+def parse_json_import(data):
+    return {
+        "title": data.get("title", "Импортированный опрос"),
+        "description": data.get("description", ""),
+        "questions": [
+            {
+                "text": q["text"],
+                "question_type": q["type"],
+                "order": idx,
+                "options": q.get("options", []),
+                "scale_min": q.get("min", 1),
+                "scale_max": q.get("max", 10)
+            }
+            for idx, q in enumerate(data.get("questions", []))
+        ]
+    }
+
+def parse_csv_import(df):
+    questions = []
+    for idx, row in df.iterrows():
+        q_type = str(row.get("type", "text")).strip()
+        opts = []
+        if q_type in ["single", "multiple"] and pd.notna(row.get("options")):
+            opts = [o.strip() for o in str(row["options"]).split(";") if o.strip()]
+        questions.append({
+            "text": str(row.get("text", "")),
+            "question_type": q_type,
+            "order": idx,
+            "options": opts,
+            "scale_min": int(row.get("scale_min", 1)) if pd.notna(row.get("scale_min")) else 1,
+            "scale_max": int(row.get("scale_max", 10)) if pd.notna(row.get("scale_max")) else 10
+        })
+    return {"title": "Импортированный опрос", "description": "", "questions": questions}
+
+def parse_excel_import(df):
+    return parse_csv_import(df)
