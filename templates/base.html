@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{% block title %}Анализ опросов{% endblock %}</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="nav">
+            <div class="nav-links">
+                <a href="/">Главная</a>
+                <a href="/surveys">Мои опросы</a>
+                <a href="/surveys/new">Создать опрос</a>
+            </div>
+            <div class="user-info">
+                {% if current_user %}
+                    <span>{{ current_user.username }}</span>
+                    <form action="/logout" method="post" style="display: inline;">
+                        <button type="submit" class="logout-btn">Выйти</button>
+                    </form>
+                {% else %}
+                    <a href="/login">Вход</a>
+                    <a href="/register">Регистрация</a>
+                {% endif %}
+            </div>
+        </div>
+        {% block content %}{% endblock %}
+    </div>
+</body>
+</html>

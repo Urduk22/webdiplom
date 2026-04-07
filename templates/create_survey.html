@@ -1,142 +1,94 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Создание опроса</title>
-    <meta charset="utf-8">
-    <style>
-        body { font-family: Arial; margin: 40px; background: #f5f5f5; }
-        .container { max-width: 800px; margin: auto; background: white; padding: 30px; border-radius: 8px; }
-        h1 { color: #2c5aa0; }
-        label { display: block; margin: 15px 0 5px; font-weight: bold; }
-        input[type="text"], textarea, select { width: 100%; padding: 8px; box-sizing: border-box; }
-        .question-item { background: #f8f9fa; padding: 15px; margin-bottom: 15px; border-radius: 5px; }
-        .option-item { margin-left: 20px; margin-top: 10px; }
-        .add-option { margin-left: 20px; }
-        button { background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; }
-        button:hover { background: #218838; }
-    </style>
-</head>
-<body>
-    <div class="nav">
-        <a href="/">Главная (загрузка файла)</a>
-        <a href="/surveys/new">Создать опрос</a>
-        <a href="/surveys">Список опросов</a>
-    </div>
-    <div class="container">
-        <h1>Создание нового опроса</h1>
-        <form id="surveyForm" action="/api/surveys" method="post" enctype="application/json">
+{% extends "base.html" %}
+{% block title %}Создание опроса{% endblock %}
+{% block content %}
+<div class="card">
+    <h1>Создание нового опроса</h1>
+    <form id="surveyForm" action="/api/surveys" method="post">
+        <div class="form-group">
             <label>Название опроса:</label>
             <input type="text" name="title" id="title" required>
-
-            <label>Описание (необязательно):</label>
+        </div>
+        <div class="form-group">
+            <label>Описание:</label>
             <textarea name="description" id="description" rows="3"></textarea>
+        </div>
+        <h2>Вопросы</h2>
+        <div id="questions"></div>
+        <button type="button" onclick="addQuestion()">+ Добавить вопрос</button>
+        <button type="submit" style="margin-top: 1rem;">Создать опрос</button>
+    </form>
+</div>
 
-            <h3>Вопросы</h3>
-            <div id="questions"></div>
-            <button type="button" onclick="addQuestion()">+ Добавить вопрос</button>
-            <br><br>
-            <button type="submit">Создать опрос</button>
-        </form>
-    </div>
-
-    <script>
-        let questionCount = 0;
-
-        function addQuestion() {
-            const container = document.getElementById('questions');
-            const div = document.createElement('div');
-            div.className = 'question-item';
-            div.id = `q_${questionCount}`;
-
-            div.innerHTML = `
-                <label>Текст вопроса:</label>
-                <input type="text" name="q_${questionCount}_text" required>
-                <label>Тип вопроса:</label>
-                <select name="q_${questionCount}_type" onchange="changeType(${questionCount})">
-                    <option value="text">Текстовый ответ</option>
-                    <option value="single">Одиночный выбор</option>
-                    <option value="multiple">Множественный выбор</option>
-                    <option value="scale">Числовая шкала</option>
-                </select>
-                <div id="scale_range_${questionCount}" style="display: none; margin-top: 10px;">
-                    <label>Мин. значение: <input type="number" name="q_${questionCount}_scale_min" value="1" style="width: 80px;"></label>
-                    <label>Макс. значение: <input type="number" name="q_${questionCount}_scale_max" value="10" style="width: 80px;"></label>
-                </div>
-                <div id="options_${questionCount}"></div>
-                <button type="button" onclick="removeQuestion(${questionCount})">Удалить вопрос</button>
-            `;
-            container.appendChild(div);
-            questionCount++;
+<script>
+    let questionCount = 0;
+    function addQuestion() {
+        const container = document.getElementById('questions');
+        const div = document.createElement('div');
+        div.className = 'card';
+        div.id = `q_${questionCount}`;
+        div.innerHTML = `
+            <label>Текст вопроса:</label>
+            <input type="text" name="q_${questionCount}_text" required>
+            <label>Тип вопроса:</label>
+            <select name="q_${questionCount}_type" onchange="changeType(${questionCount})">
+                <option value="text">Текстовый ответ</option>
+                <option value="single">Одиночный выбор</option>
+                <option value="multiple">Множественный выбор</option>
+                <option value="scale">Числовая шкала</option>
+            </select>
+            <div id="options_${questionCount}"></div>
+            <div id="scale_range_${questionCount}" style="display:none; margin-top: 10px;">
+                <label>Мин. значение: <input type="number" name="q_${questionCount}_scale_min" value="1"></label>
+                <label>Макс. значение: <input type="number" name="q_${questionCount}_scale_max" value="10"></label>
+            </div>
+            <button type="button" onclick="removeQuestion(${questionCount})">Удалить вопрос</button>
+        `;
+        container.appendChild(div);
+        questionCount++;
+    }
+    function changeType(index) {
+        const type = document.querySelector(`[name="q_${index}_type"]`).value;
+        const optionsDiv = document.getElementById(`options_${index}`);
+        const scaleDiv = document.getElementById(`scale_range_${index}`);
+        optionsDiv.innerHTML = '';
+        if (type === 'single' || type === 'multiple') {
+            optionsDiv.innerHTML = `<textarea name="q_${index}_options" rows="4" placeholder="Вариант 1\nВариант 2\nВариант 3"></textarea>`;
+            if (scaleDiv) scaleDiv.style.display = 'none';
+        } else if (type === 'scale') {
+            if (scaleDiv) scaleDiv.style.display = 'block';
+        } else {
+            if (scaleDiv) scaleDiv.style.display = 'none';
         }
-
-        function changeType(index) {
-            const typeSelect = document.querySelector(`[name="q_${index}_type"]`);
-            const type = typeSelect.value;
-            const optionsDiv = document.getElementById(`options_${index}`);
-            optionsDiv.innerHTML = '';
-
-            if (type === 'single' || type === 'multiple') {
-                optionsDiv.innerHTML = `
-                    <label>Варианты ответа (каждый с новой строки):</label>
-                    <textarea name="q_${index}_options" rows="4" placeholder="Вариант 1\nВариант 2\nВариант 3"></textarea>
-                `;
-            }
+    }
+    function removeQuestion(index) {
+        const el = document.getElementById(`q_${index}`);
+        if (el) el.remove();
+    }
+    document.getElementById('surveyForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const title = document.getElementById('title').value;
+        const description = document.getElementById('description').value;
+        const questions = [];
+        for (let i = 0; i < questionCount; i++) {
+            const textInput = document.querySelector(`[name="q_${i}_text"]`);
+            if (!textInput) continue;
+            const text = textInput.value;
+            const type = document.querySelector(`[name="q_${i}_type"]`).value;
+            const optionsTextarea = document.querySelector(`[name="q_${i}_options"]`);
+            let options = [];
+            if (optionsTextarea) options = optionsTextarea.value.split('\n').filter(o => o.trim() !== '');
+            const scaleMin = document.querySelector(`[name="q_${i}_scale_min"]`)?.value || 1;
+            const scaleMax = document.querySelector(`[name="q_${i}_scale_max"]`)?.value || 10;
+            questions.push({ text, question_type: type, order: i, options, scale_min: parseInt(scaleMin), scale_max: parseInt(scaleMax) });
         }
-
-        function removeQuestion(index) {
-            const el = document.getElementById(`q_${index}`);
-            if (el) el.remove();
-        }
-
-        // Перехват отправки формы и преобразование в JSON
-        document.getElementById('surveyForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-
-            const title = document.getElementById('title').value;
-            const description = document.getElementById('description').value;
-
-            const questions = [];
-            for (let i = 0; i < questionCount; i++) {
-                const textInput = document.querySelector(`[name="q_${i}_text"]`);
-                if (!textInput) continue; // вопрос удалён
-                const text = textInput.value;
-                const type = document.querySelector(`[name="q_${i}_type"]`).value;
-                const optionsTextarea = document.querySelector(`[name="q_${i}_options"]`);
-                let options = [];
-                if (optionsTextarea) {
-                    options = optionsTextarea.value.split('\n').filter(o => o.trim() !== '');
-                }
-
-                questions.push({
-                    text: text,
-                    question_type: type,
-                    order: i,
-                    options: options
-                });
-            }
-
-            const data = {
-                title: title,
-                description: description,
-                questions: questions
-            };
-
-            fetch('/api/surveys', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(data)
-            })
-            .then(response => {
-                if (response.redirected) {
-                    window.location.href = response.url;
-                } else {
-                    alert('Ошибка при создании опроса');
-                }
-            })
-            .catch(err => alert('Ошибка: ' + err));
+        fetch('/api/surveys', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title, description, questions })
+        }).then(response => {
+            if (response.redirected) window.location.href = response.url;
+            else alert('Ошибка');
         });
-    </script>
-</body>
-</html>
+    });
+</script>
+{% endblock %}

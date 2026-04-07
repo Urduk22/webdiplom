@@ -40,13 +40,25 @@ from models import Survey, Question, Option, Response, Answer
 
 from fastapi.security import OAuth2PasswordRequestForm
 from auth import authenticate_user, create_access_token, get_current_user, get_password_hash
+from fastapi.staticfiles import StaticFiles
 
 # Создание таблиц БД
 
 Base.metadata.create_all(bind=engine)
-
+# Проверяем и добавляем колонку owner_id, если отсутствует
+with engine.connect() as conn:
+    # SQLite не поддерживает IF NOT EXISTS в ALTER TABLE, поэтому пробуем выполнить и игнорируем ошибку
+    try:
+        conn.execute("ALTER TABLE surveys ADD COLUMN owner_id INTEGER")
+        conn.commit()
+        print("Колонка owner_id добавлена в таблицу surveys")
+    except Exception as e:
+        if "duplicate column name" in str(e).lower():
+            pass  # колонка уже есть
+        else:
+            print(f"Ошибка при добавлении колонки: {e}")
 app = FastAPI(title="Survey Data Analyzer")
-
+app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
 UPLOAD_DIR = "uploads"
@@ -857,7 +869,18 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = 
         raise HTTPException(status_code=401, detail="Incorrect username or password")
     access_token = create_access_token(data={"sub": user.username})
     return {"access_token": access_token, "token_type": "bearer"}
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    return templates.TemplateResponse("login.html", {"request": request})
 
+@app.get("/register", response_class=HTMLResponse)
+async def register_page(request: Request):
+    return templates.TemplateResponse("register.html", {"request": request})
+
+@app.post("/logout")
+async def logout():
+    # В реальном приложении нужно очистить токен (используйте зависимость)
+    return RedirectResponse(url="/", status_code=303)
 # ==================== ОПРОСЫ С АУТЕНТИФИКАЦИЕЙ ====================
 @app.get("/surveys")
 async def list_surveys(request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
@@ -949,7 +972,56 @@ async def export_survey_results_excel(
     stats = generate_survey_stats(survey_id, db)
     output = generate_results_excel(survey, stats)
     return StreamingResponse(output, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": f"attachment; filename=survey_{survey_id}_results.xlsx"})
+@app.get("/surveys/new", response_class=HTMLResponse)
+async def create_survey_form(request: Request, current_user: User = Depends(get_current_user)):
+    return templates.TemplateResponse("create_survey.html", {"request": request})
 
+@app.post("/api/surveys", response_class=RedirectResponse)
+async def create_survey_api(
+    survey_data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    title = survey_data.get("title")
+    description = survey_data.get("description", "")
+    questions_data = survey_data.get("questions", [])
+
+    db_survey = Survey(title=title, description=description, owner_id=current_user.id)
+    db.add(db_survey)
+    db.commit()
+    db.refresh(db_survey)
+
+    for idx, q in enumerate(questions_data):
+        db_q = Question(
+            survey_id=db_survey.id,
+            text=q["text"],
+            question_type=q["question_type"],
+            order=q.get("order", idx),
+            scale_min=q.get("scale_min", 1),
+            scale_max=q.get("scale_max", 10)
+        )
+        db.add(db_q)
+        db.commit()
+        db.refresh(db_q)
+        if q["question_type"] in ["single", "multiple"]:
+            for opt_text in q.get("options", []):
+                db_opt = Option(question_id=db_q.id, text=opt_text)
+                db.add(db_opt)
+        db.commit()
+    return RedirectResponse(url=f"/surveys/{db_survey.id}", status_code=303)
+
+@app.post("/surveys/{survey_id}/delete")
+async def delete_survey(
+    survey_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    survey = db.query(Survey).filter(Survey.id == survey_id, Survey.owner_id == current_user.id).first()
+    if not survey:
+        raise HTTPException(status_code=404, detail="Опрос не найден или нет доступа")
+    db.delete(survey)
+    db.commit()
+    return RedirectResponse(url="/surveys", status_code=303)
 # ==================== ИМПОРТ ОПРОСА (3 формата) ====================
 @app.post("/surveys/import")
 async def import_survey(

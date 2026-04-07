@@ -1,0 +1,174 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #f8fafc;
+    color: #0f172a;
+    line-height: 1.5;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem;
+}
+
+/* Навигация */
+.nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: white;
+    padding: 1rem 2rem;
+    border-radius: 1rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.nav-links {
+    display: flex;
+    gap: 1.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.nav a {
+    text-decoration: none;
+    color: #334155;
+    font-weight: 500;
+    transition: color 0.2s;
+}
+
+.nav a:hover {
+    color: #3b82f6;
+}
+
+.user-info {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    background: #f1f5f9;
+    padding: 0.5rem 1rem;
+    border-radius: 2rem;
+}
+
+.logout-btn {
+    background: none;
+    border: none;
+    color: #ef4444;
+    cursor: pointer;
+    font-weight: 500;
+}
+
+/* Карточки */
+.card {
+    background: white;
+    border-radius: 1rem;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+h1 {
+    font-size: 1.875rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    color: #0f172a;
+}
+
+h2 {
+    font-size: 1.5rem;
+    font-weight: 500;
+    margin: 1.5rem 0 1rem;
+}
+
+button, .btn {
+    background: #3b82f6;
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 0.5rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s;
+    text-decoration: none;
+    display: inline-block;
+}
+
+button:hover, .btn:hover {
+    background: #2563eb;
+}
+
+.btn-secondary {
+    background: #64748b;
+}
+
+.btn-secondary:hover {
+    background: #475569;
+}
+
+input, select, textarea {
+    width: 100%;
+    padding: 0.5rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.5rem;
+    font-family: inherit;
+    margin-top: 0.25rem;
+}
+
+label {
+    font-weight: 500;
+    display: block;
+    margin-top: 1rem;
+}
+
+/* Таблицы */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+    border-radius: 0.5rem;
+    overflow: hidden;
+}
+
+th, td {
+    padding: 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+th {
+    background: #f8fafc;
+    font-weight: 600;
+}
+
+/* Графики и контейнеры */
+.graph-container {
+    background: white;
+    border-radius: 1rem;
+    padding: 1rem;
+    margin: 1.5rem 0;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+/* Формы */
+.form-group {
+    margin-bottom: 1rem;
+}
+
+.error {
+    color: #dc2626;
+    margin-top: 0.5rem;
+}
+.btn-danger {
+    background: #ef4444;
+}
+.btn-danger:hover {
+    background: #dc2626;
+}
