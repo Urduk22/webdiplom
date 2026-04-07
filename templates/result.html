@@ -12,8 +12,8 @@
         .nav a:hover { text-decoration: underline; }
         .summary { background: #e9ecef; padding: 15px; border-radius: 5px; margin: 20px 0; }
         .selected-list { columns: 2; list-style: decimal; margin-left: 20px; }
-        .download-links a { display: inline-block; margin-right: 20px; background: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; }
-        .download-links a:hover { background: #0056b3; }
+        .download-links a, .download-links button { display: inline-block; margin-right: 20px; background: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; border: none; cursor: pointer; font-size: 14px; }
+        .download-links a:hover, .download-links button:hover { background: #0056b3; }
         .back { margin-top: 30px; }
         .graph-container { margin: 30px 0; border: 1px solid #ddd; border-radius: 5px; padding: 10px; background: white; }
         .warning { color: #ff9800; margin: 10px 0; }
@@ -54,14 +54,31 @@
             <p>Нет отобранных столбцов.</p>
         {% endif %}
 
+        {% if heatmap_html %}
         <div class="graph-container">
-            <h3>Граф корреляций между признаками</h3>
-            {{ graph_html|safe }}
+            <h3>Тепловая карта корреляций</h3>
+            {{ heatmap_html|safe }}
         </div>
+        {% endif %}
+
+        {% if pca_html %}
+        <div class="graph-container">
+            <h3>Анализ главных компонент (PCA)</h3>
+            {{ pca_html|safe }}
+        </div>
+        {% endif %}
 
         <div class="download-links">
             <a href="/download/{{ correlation_file }}">Скачать матрицу корреляции (CSV)</a>
             <a href="/download/{{ algorithm_file }}">Скачать результаты алгоритма (TXT)</a>
+            <form action="/export/pdf" method="post" style="display: inline;">
+                <input type="hidden" name="task_id" value="{{ task_id }}">
+                <button type="submit">Скачать PDF-отчёт</button>
+            </form>
+            <form action="/export/excel" method="post" style="display: inline;">
+                <input type="hidden" name="task_id" value="{{ task_id }}">
+                <button type="submit">Скачать Excel-отчёт</button>
+            </form>
         </div>
 
         <div class="back">

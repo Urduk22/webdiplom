@@ -11,7 +11,7 @@
         .nav a { color: white; margin-right: 20px; text-decoration: none; font-weight: bold; }
         .nav a:hover { text-decoration: underline; }
         label { display: block; margin: 15px 0 5px; font-weight: bold; }
-        input[type="file"], input[type="number"], input[type="text"], input[type="checkbox"] { margin-bottom: 15px; }
+        input[type="file"], input[type="number"], input[type="text"], input[type="checkbox"], select { margin-bottom: 15px; width: 100%; padding: 8px; }
         .param-group { background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0; }
         .param-row { display: flex; align-items: center; margin-bottom: 10px; }
         .param-row label { width: 150px; margin: 0; }
@@ -53,7 +53,18 @@
             </div>
 
             <div class="param-group">
-                <h3>Параметры алгоритма</h3>
+                <h3>Метод отбора признаков</h3>
+                <select name="method">
+                    <option value="graph">Графовый алгоритм (минимальное доминирующее множество)</option>
+                    <option value="correlation">Корреляция с целевым признаком</option>
+                    <option value="anova">ANOVA / F-тест</option>
+                    <option value="pca">PCA (главные компоненты)</option>
+                </select>
+                <label>Количество лучших признаков (для методов correlation/anova): <input type="number" name="top_k" value="10" min="1" max="100"></label>
+            </div>
+
+            <div class="param-group">
+                <h3>Параметры графового алгоритма (только для метода graph)</h3>
                 <div class="param-row">
                     <label>N_launches:</label>
                     <input type="number" name="n_launches" value="10" min="1">

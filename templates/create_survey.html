@@ -58,6 +58,10 @@
                     <option value="multiple">Множественный выбор</option>
                     <option value="scale">Числовая шкала</option>
                 </select>
+                <div id="scale_range_${questionCount}" style="display: none; margin-top: 10px;">
+                    <label>Мин. значение: <input type="number" name="q_${questionCount}_scale_min" value="1" style="width: 80px;"></label>
+                    <label>Макс. значение: <input type="number" name="q_${questionCount}_scale_max" value="10" style="width: 80px;"></label>
+                </div>
                 <div id="options_${questionCount}"></div>
                 <button type="button" onclick="removeQuestion(${questionCount})">Удалить вопрос</button>
             `;

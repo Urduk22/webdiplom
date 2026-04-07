@@ -53,5 +53,40 @@
             <p>Пока нет созданных опросов. <a href="/surveys/new">Создать первый опрос</a>.</p>
         {% endif %}
     </div>
+        <h3>Импортировать опрос из файла</h3>
+        <form action="/surveys/import" method="post" enctype="multipart/form-data">
+            <input type="file" name="file" accept=".json,.csv,.xls,.xlsx" required>
+            <button type="submit">Импортировать</button>
+        </form>
+        {% if stats %}
+        <h3>Статистика по вопросам</h3>
+        {% for q_stat in stats %}
+            <div style="margin-bottom: 30px;">
+                <h4>{{ q_stat.question_text }}</h4>
+                {% if q_stat.question_type == 'single' %}
+                    <table border="1" cellpadding="5">
+                        <tr><th>Вариант</th><th>Голосов</th><th>Процент</th></tr>
+                        {% for opt in q_stat.options %}
+                        <tr>
+                            <td>{{ opt.text }}</td>
+                            <td>{{ opt.count }}</td>
+                            <td>{{ "%.1f"|format(opt.percent) }}%</td>
+                        </tr>
+                        {% endfor %}
+                    </table>
+                {% elif q_stat.question_type == 'scale' %}
+                    <p>Среднее: {{ "%.2f"|format(q_stat.mean) }}, Медиана: {{ "%.2f"|format(q_stat.median) }}</p>
+                    <!-- можно добавить гистограмму -->
+                {% elif q_stat.question_type == 'text' %}
+                    <p>Текстовые ответы (первые 10):</p>
+                    <ul>
+                    {% for ans in q_stat.answers[:10] %}
+                        <li>{{ ans }}</li>
+                    {% endfor %}
+                    </ul>
+                {% endif %}
+            </div>
+        {% endfor %}
+        {% endif %}
 </body>
 </html>

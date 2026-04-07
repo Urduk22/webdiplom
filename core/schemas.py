@@ -2,7 +2,6 @@ from pydantic import BaseModel
 from typing import List, Optional
 
 class AnalysisParams(BaseModel):
-    """Параметры анализа, передаваемые через API"""
     drop_first: bool = False
     fill_na_zero: bool = True
     encode_cat: bool = False
@@ -13,10 +12,11 @@ class AnalysisParams(BaseModel):
     cap: int = 1000
     frac: float = 0.35
     q: float = 1.0
-    target_column: str = ""   # имя целевого столбца (необязательно)
+    target_column: str = ""
+    method: str = "graph"          # 'graph', 'correlation', 'anova', 'pca'
+    top_k: int = 10
 
 class AnalysisResponse(BaseModel):
-    """Ответ API с результатами анализа"""
     selected_columns: List[str]
     w_max: float
     correlation_file: str
@@ -26,9 +26,10 @@ class AnalysisResponse(BaseModel):
     process_details: str
     correlation_details: str
     algorithm_details: str
-    target_column: str = ""   # возвращаем, какой целевой столбец был использован
+    target_column: str = ""
+    method: str = "graph"
+    comparison_results: Optional[dict] = None
 
 class FileUploadResponse(BaseModel):
-    """Ответ после загрузки файла (для последующего анализа по ID)"""
     file_id: str
     filename: str
