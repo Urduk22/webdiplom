@@ -67,7 +67,19 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/token")
-
+def convert_numpy_types(obj):
+    """Рекурсивно преобразует numpy типы в стандартные Python типы."""
+    if isinstance(obj, np.integer):
+        return int(obj)
+    elif isinstance(obj, np.floating):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, dict):
+        return {key: convert_numpy_types(value) for key, value in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [convert_numpy_types(item) for item in obj]
+    return obj
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
 
@@ -246,26 +258,25 @@ Cap: {params['cap']}, Frac: {params['frac']}, q: {params['q']}
     with open(algo_path, "w", encoding="utf-8") as f:
         f.write(algorithm_details)
 
-    return {
+    result = {
         "selected_columns": selected_columns,
-        "w_max": w_max,
+        "w_max": float(w_max) if isinstance(w_max, (np.integer, np.floating)) else w_max,
         "correlation_file": corr_filename,
         "algorithm_file": algo_filename,
-        "num_rows": df_processed.shape[0],
-        "num_cols": df_processed.shape[1],
+        "num_rows": int(df_processed.shape[0]),
+        "num_cols": int(df_processed.shape[1]),
         "process_details": process_details,
         "correlation_details": correlation_details,
         "algorithm_details": algorithm_details,
         "graph_html": graph_html,
         "heatmap_html": heatmap_html,
         "pca_html": pca_html,
-        "correlation_matrix": correlation_matrix,
-        "df_processed": df_processed,
-        "threshold": threshold,
-        "params": params,
+        "threshold": float(threshold),
+        "params": {k: (float(v) if isinstance(v, (np.integer, np.floating)) else v) for k, v in params.items()},
         "target_column": target_column,
         "original_filename": original_filename
     }
+    return result
 
 # --- API эндпоинты ---
 @app.post("/api/register")
