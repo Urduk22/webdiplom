@@ -9,8 +9,10 @@
     "@mui/material": "^5.14.20",
     "@mui/x-data-grid": "^6.18.5",
     "axios": "^1.6.2",
+    "plotly.js-dist": "^3.5.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-plotly.js": "^2.6.0",
     "react-router-dom": "^6.20.1",
     "react-scripts": "5.0.1"
   },
@@ -22,10 +24,20 @@
   },
   "proxy": "http://localhost:8000",
   "eslintConfig": {
-    "extends": ["react-app"]
+    "extends": [
+      "react-app"
+    ]
   },
   "browserslist": {
-    "production": [">0.2%", "not dead", "not op_mini all"],
-    "development": ["last 1 chrome version", "last 1 firefox version", "last 1 safari version"]
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
   }
 }

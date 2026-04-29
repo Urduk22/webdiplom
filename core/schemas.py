@@ -1,6 +1,19 @@
 from pydantic import BaseModel
 from typing import List, Optional
 
+class QuestionCreate(BaseModel):
+    text: str
+    question_type: str
+    order: int
+    options: List[str] = []
+    scale_min: int = 1
+    scale_max: int = 10
+
+class SurveyCreate(BaseModel):
+    title: str
+    description: Optional[str] = ""
+    questions: List[QuestionCreate]
+
 class AnalysisParams(BaseModel):
     drop_first: bool = False
     fill_na_zero: bool = True
@@ -13,23 +26,5 @@ class AnalysisParams(BaseModel):
     frac: float = 0.35
     q: float = 1.0
     target_column: str = ""
-    method: str = "graph"          # 'graph', 'correlation', 'anova', 'pca'
-    top_k: int = 10
-
-class AnalysisResponse(BaseModel):
-    selected_columns: List[str]
-    w_max: float
-    correlation_file: str
-    algorithm_file: str
-    num_rows: int
-    num_cols: int
-    process_details: str
-    correlation_details: str
-    algorithm_details: str
-    target_column: str = ""
     method: str = "graph"
-    comparison_results: Optional[dict] = None
-
-class FileUploadResponse(BaseModel):
-    file_id: str
-    filename: str
+    top_k: int = 10

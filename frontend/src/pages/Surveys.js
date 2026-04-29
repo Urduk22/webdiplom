@@ -58,6 +58,7 @@ export default function Surveys({ user }) {
                 <TableCell>
                   <Button href={`/surveys/${s.id}`} variant="outlined" size="small">Пройти</Button>
                   <Button href={`/surveys/${s.id}/results`} variant="outlined" size="small" sx={{ ml: 1 }}>Результаты</Button>
+                  <Button href={`/surveys/${s.id}/stats`} variant="outlined" size="small">Статистика</Button>
                   <IconButton onClick={() => handleDelete(s.id)} color="error"><DeleteIcon /></IconButton>
                 </TableCell>
               </TableRow>

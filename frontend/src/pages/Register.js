@@ -48,6 +48,8 @@ export default function Register() {
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             required
+            autoComplete="off"
+            InputLabelProps={{ shrink: true }}
           />
           <TextField
             fullWidth
@@ -57,6 +59,8 @@ export default function Register() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
+            autoComplete="off"
+            InputLabelProps={{ shrink: true }}
           />
           <Button fullWidth variant="contained" type="submit" sx={{ mt: 2 }}>
             Зарегистрироваться

@@ -59,7 +59,7 @@ export default function SurveyResults() {
 
   return (
     <Box>
-      <Typography variant="h4" gutterBottom>Результаты опроса</Typography>
+      <Typography variant="h4" gutterBottom>Анализ опроса</Typography>
       <Paper sx={{ p: 2, mb: 2 }}>
         <Typography variant="h6">Настройки анализа</Typography>
         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
