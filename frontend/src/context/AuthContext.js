@@ -21,13 +21,11 @@ export const AuthProvider = ({ children }) => {
             setLoading(false);
             return;
         }
-        // Проверяем токен и получаем пользователя
         getMe()
             .then((res) => {
                 setUser(res.data);
             })
-            .catch((err) => {
-                console.error('Ошибка при восстановлении сессии:', err);
+            .catch(() => {
                 localStorage.removeItem('token');
             })
             .finally(() => setLoading(false));

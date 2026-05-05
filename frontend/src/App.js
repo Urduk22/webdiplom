@@ -1,10 +1,11 @@
 import React from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './layouts/Layout';
+import FullScreenLoader from './components/FullScreenLoader';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Surveys from './pages/Surveys';
@@ -14,6 +15,7 @@ import SurveyResults from './pages/SurveyResults';
 import SurveyStats from './pages/SurveyStats';
 import UploadAnalysis from './pages/UploadAnalysis';
 import NotFound from './pages/NotFound';
+
 const theme = createTheme({
     palette: {
         primary: { main: '#3b82f6' },
@@ -22,7 +24,10 @@ const theme = createTheme({
 });
 
 function AppContent() {
-    const { user } = useAuth(); // только для проверки, но необязательно
+    const { loading } = useAuth();
+
+    if (loading) return <FullScreenLoader open />;
+
     return (
         <Layout>
             <Routes>

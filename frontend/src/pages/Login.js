@@ -16,11 +16,11 @@ export default function Login() {
         try {
             const res = await login(username, password);
             const { access_token } = res.data;
-            // Сохраняем токен в localStorage (для интерцептора)
+            // Сохраняем токен в localStorage для интерцептора
             localStorage.setItem('token', access_token);
-            // Получаем данные пользователя и обновляем контекст
+            // Получаем данные пользователя
             const userRes = await getMe();
-            // Вызываем authLogin из контекста (он сохранит токен и юзера)
+            // Обновляем контекст
             authLogin(access_token, userRes.data);
             navigate('/');
         } catch (err) {
