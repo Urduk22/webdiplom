@@ -11,13 +11,15 @@ import pandas as pd
 
 router = APIRouter(prefix="/api", tags=["surveys"])
 
+
 @router.get("/surveys")
-async def list_surveys(db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+async def list_surveys(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     if current_user.role == "admin":
         surveys = db.query(Survey).all()
     else:
         surveys = db.query(Survey).filter(Survey.owner_id == current_user.id).all()
     return surveys
+
 
 @router.get("/surveys/{survey_id}")
 async def get_survey(survey_id: int, db: Session = Depends(get_db)):
@@ -44,8 +46,10 @@ async def get_survey(survey_id: int, db: Session = Depends(get_db)):
         })
     return result
 
+
 @router.post("/surveys")
-async def create_survey(survey_data: SurveyCreate, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+async def create_survey(survey_data: SurveyCreate, db: Session = Depends(get_db),
+                        current_user=Depends(get_current_user)):
     db_survey = Survey(title=survey_data.title, description=survey_data.description, owner_id=current_user.id)
     db.add(db_survey)
     db.commit()
@@ -69,8 +73,9 @@ async def create_survey(survey_data: SurveyCreate, db: Session = Depends(get_db)
         db.commit()
     return {"id": db_survey.id, "message": "Survey created"}
 
+
 @router.delete("/surveys/{survey_id}")
-async def delete_survey(survey_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+async def delete_survey(survey_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     survey = db.query(Survey).filter(Survey.id == survey_id).first()
     if not survey:
         raise HTTPException(404, "Survey not found")
@@ -79,6 +84,7 @@ async def delete_survey(survey_id: int, db: Session = Depends(get_db), current_u
     db.delete(survey)
     db.commit()
     return {"message": "Deleted"}
+
 
 @router.post("/surveys/{survey_id}/submit")
 async def submit_response(survey_id: int, answers: dict, db: Session = Depends(get_db)):
@@ -113,8 +119,65 @@ async def submit_response(survey_id: int, answers: dict, db: Session = Depends(g
     db.commit()
     return {"message": "Thank you!"}
 
+
+# ---- НОВЫЙ ЭНДПОИНТ ДЛЯ МАССОВОЙ ВСТАВКИ ----
+@router.post("/surveys/{survey_id}/bulk-submit")
+async def bulk_submit_responses(
+        survey_id: int,
+        responses_data: list[dict],
+        db: Session = Depends(get_db),
+        current_user=Depends(get_current_user)
+):
+    # Проверяем, что опрос принадлежит текущему пользователю
+    survey = db.query(Survey).filter(Survey.id == survey_id).first()
+    if not survey:
+        raise HTTPException(404, "Survey not found")
+    if survey.owner_id != current_user.id and current_user.role != "admin":
+        raise HTTPException(403, "Not allowed")
+
+    response_objects = []
+    answer_objects = []
+
+    # Создаём все Response (по одному на каждый набор ответов)
+    for _ in responses_data:
+        response_objects.append(Response(survey_id=survey_id))
+    db.add_all(response_objects)
+    db.flush()  # присваиваем id, но не коммитим
+
+    # Создаём Answer для каждого ответа
+    for idx, resp_data in enumerate(responses_data):
+        response_id = response_objects[idx].id
+        for q_id_str, value in resp_data.items():
+            q_id = int(q_id_str)
+            question = db.query(Question).filter(Question.id == q_id).first()
+            if not question:
+                continue
+            answer = Answer(response_id=response_id, question_id=q_id)
+            if question.question_type == 'text':
+                answer.text_value = value
+            elif question.question_type == 'scale':
+                try:
+                    answer.numeric_value = float(value)
+                except:
+                    pass
+            elif question.question_type == 'single':
+                try:
+                    answer.option_id = int(value)
+                except:
+                    pass
+            elif question.question_type == 'multiple':
+                if isinstance(value, list):
+                    answer.multiple_option_ids = ','.join(str(v) for v in value)
+                else:
+                    answer.multiple_option_ids = str(value)
+            answer_objects.append(answer)
+    db.add_all(answer_objects)
+    db.commit()
+    return {"message": f"Imported {len(responses_data)} responses"}
+
+
 @router.get("/surveys/{survey_id}/stats")
-async def get_survey_stats(survey_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+async def get_survey_stats(survey_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     survey = db.query(Survey).filter(Survey.id == survey_id).first()
     if not survey:
         raise HTTPException(404, "Survey not found")
@@ -123,8 +186,10 @@ async def get_survey_stats(survey_id: int, db: Session = Depends(get_db), curren
     stats = get_survey_stats_data(survey_id, db)
     return stats
 
+
 @router.get("/surveys/{survey_id}/export-stats")
-async def export_survey_stats_excel(survey_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+async def export_survey_stats_excel(survey_id: int, db: Session = Depends(get_db),
+                                    current_user=Depends(get_current_user)):
     survey = db.query(Survey).filter(Survey.id == survey_id).first()
     if not survey:
         raise HTTPException(404, "Survey not found")

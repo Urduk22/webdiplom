@@ -12,3 +12,4 @@ openpyxl
 xlrd
 odfpy
 reportlab
+kaleido

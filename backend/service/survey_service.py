@@ -33,17 +33,16 @@ def get_survey_stats_data(survey_id: int, db: Session):
                 "total": total_responses
             })
         elif q.question_type == 'multiple':
-            option_counts = {}
             options = db.query(Option).filter(Option.question_id == q.id).all()
-            for opt in options:
-                option_counts[opt.text] = 0
+            option_by_id = {opt.id: opt.text for opt in options}
+            option_counts = {opt.text: 0 for opt in options}
             for a in answers:
                 if a.multiple_option_ids:
                     ids = [int(x) for x in a.multiple_option_ids.split(',') if x.strip().isdigit()]
                     for opt_id in ids:
-                        opt = db.query(Option).filter(Option.id == opt_id).first()
-                        if opt:
-                            option_counts[opt.text] += 1
+                        if opt_id in option_by_id:
+                            opt_text = option_by_id[opt_id]
+                            option_counts[opt_text] += 1
             data = [{
                 "text": text,
                 "count": count,

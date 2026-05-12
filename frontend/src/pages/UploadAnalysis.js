@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
     Paper, Typography, Box, Button, TextField, MenuItem, Select,
-    FormControlLabel, Checkbox, Alert, CircularProgress
+    FormControlLabel, Checkbox, Alert, CircularProgress, Backdrop
 } from '@mui/material';
 import FileUploadButton from '../components/FileUploadButton';
 import { uploadFile, downloadFile } from '../services/api';
+import axios from 'axios';
 
 export default function UploadAnalysis() {
     const [file, setFile] = useState(null);
@@ -32,26 +33,19 @@ export default function UploadAnalysis() {
 
     useEffect(() => {
         if (!results) return;
-        // Функция для вставки HTML и принудительной отрисовки Plotly
         const renderPlotly = (html, container) => {
             if (!container.current || !html) return;
-            // Очищаем контейнер
             container.current.innerHTML = '';
             const tempDiv = document.createElement('div');
             tempDiv.innerHTML = html;
-            // Извлекаем скрипты из HTML
-            const scripts = tempDiv.querySelectorAll('script');
             const plotDiv = tempDiv.querySelector('div');
+            const scripts = tempDiv.querySelectorAll('script');
             if (plotDiv) {
                 container.current.appendChild(plotDiv);
-                // Выполняем скрипты вручную
                 scripts.forEach(script => {
                     const newScript = document.createElement('script');
-                    if (script.src) {
-                        newScript.src = script.src;
-                    } else {
-                        newScript.textContent = script.textContent;
-                    }
+                    if (script.src) newScript.src = script.src;
+                    else newScript.textContent = script.textContent;
                     document.body.appendChild(newScript);
                 });
             }
@@ -98,9 +92,47 @@ export default function UploadAnalysis() {
         }).catch(() => alert('Ошибка скачивания'));
     };
 
+    const exportToPDF = async () => {
+        if (!file) {
+            setError('Сначала выполните анализ');
+            return;
+        }
+        setLoading(true);
+        const formData = new FormData();
+        formData.append('file', file);
+        for (let [key, val] of Object.entries(params)) {
+            formData.append(key, val);
+        }
+        try {
+            const response = await axios.post('http://localhost:8000/api/analyze/export-pdf', formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data',
+                    Authorization: `Bearer ${localStorage.getItem('token')}`
+                },
+                responseType: 'blob'
+            });
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', 'analysis_report.pdf');
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+        } catch (err) {
+            console.error(err);
+            alert('Ошибка генерации PDF');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return (
         <Box>
             <Typography variant="h4" gutterBottom>Анализ файла опроса</Typography>
+            <Backdrop open={loading} sx={{ zIndex: 9999 }}>
+                <CircularProgress color="inherit" />
+            </Backdrop>
             <Paper sx={{ p: 3 }}>
                 <form onSubmit={handleSubmit}>
                     <FileUploadButton accept=".csv,.xls,.xlsx,.ods" onFileSelect={setFile}>
@@ -141,7 +173,8 @@ export default function UploadAnalysis() {
                             onChange={(e) => setParams({...params, top_k: parseInt(e.target.value)})}
                             sx={{ width: 80 }} InputLabelProps={{ shrink: true }} />
                     </Box>
-                    <Box sx={{ mt: 1 }}>
+
+                    <Box sx={{ mt: 2 }}>
                         <FormControlLabel control={<Checkbox checked={params.drop_first}
                             onChange={(e) => setParams({...params, drop_first: e.target.checked})} />}
                             label="Удалить первый столбец" />
@@ -155,7 +188,8 @@ export default function UploadAnalysis() {
                             onChange={(e) => setParams({...params, max_cat: parseInt(e.target.value)})}
                             sx={{ width: 100, ml: 2 }} InputLabelProps={{ shrink: true }} />
                     </Box>
-                    <Button variant="contained" type="submit" disabled={loading} sx={{ mt: 2 }}>
+
+                    <Button variant="contained" type="submit" disabled={loading} sx={{ mt: 3 }}>
                         {loading ? <CircularProgress size={24} /> : 'Запустить анализ'}
                     </Button>
                 </form>
@@ -168,10 +202,13 @@ export default function UploadAnalysis() {
                     <Typography variant="h6">Результаты</Typography>
                     <Typography>Максимальный вес: {results.w_max}</Typography>
                     <Typography>Выбрано столбцов: {results.selected_columns?.length || 0}</Typography>
-                    <ul>{results.selected_columns?.map(col => <li key={col}>{col}</li>)}</ul>
-                    <Box sx={{ my: 2 }}>
-                        <Button onClick={() => handleDownload(results.correlation_file)}>Скачать корреляцию (CSV)</Button>
-                        <Button onClick={() => handleDownload(results.algorithm_file)} sx={{ ml: 1 }}>Скачать алгоритм (TXT)</Button>
+                    <ul>
+                        {results.selected_columns?.map(col => <li key={col}>{col}</li>)}
+                    </ul>
+                    <Box sx={{ my: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                        <Button variant="outlined" onClick={() => handleDownload(results.correlation_file)}>Скачать корреляцию (CSV)</Button>
+                        <Button variant="outlined" onClick={() => handleDownload(results.algorithm_file)}>Скачать алгоритм (TXT)</Button>
+                        <Button variant="outlined" onClick={exportToPDF}>Экспорт в PDF</Button>
                     </Box>
 
                     {results.heatmap_html && (

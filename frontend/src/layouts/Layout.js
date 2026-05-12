@@ -8,15 +8,17 @@ export default function Layout({ children }) {
     const { user, logout } = useAuth();
     const navigate = useNavigate();
     const theme = useTheme();
-    const isMobile = useMediaQuery(theme.breakpoints.down('sm')); // <600px
+    const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
     const [drawerOpen, setDrawerOpen] = useState(false);
 
     const menuItems = user ? [
         { label: 'Главная', path: '/' },
         { label: 'Мои опросы', path: '/surveys' },
         { label: 'Создать', path: '/create-survey' },
+        { label: 'Импорт', path: '/import-survey' },
         { label: `Выйти (${user.username})`, action: logout }
     ] : [
+        { label: 'Главная', path: '/' },
         { label: 'Вход', path: '/login' },
         { label: 'Регистрация', path: '/register' }
     ];

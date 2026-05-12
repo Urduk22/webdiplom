@@ -10,7 +10,7 @@ API.interceptors.request.use((req) => {
     return req;
 });
 
-// Регистрация (form-urlencoded)
+// Регистрация и вход
 export const register = (username, password) => {
     const formData = new URLSearchParams();
     formData.append('username', username);
@@ -20,7 +20,6 @@ export const register = (username, password) => {
     });
 };
 
-// Вход (form-urlencoded)
 export const login = (username, password) => {
     const formData = new URLSearchParams();
     formData.append('username', username);
@@ -30,7 +29,6 @@ export const login = (username, password) => {
     });
 };
 
-// Получение текущего пользователя
 export const getMe = () => API.get('/me');
 
 // Опросы
@@ -49,6 +47,7 @@ export const uploadFile = (formData) => API.post('/analyze', formData, {
 // Статистика и экспорт
 export const getSurveyStats = (id) => API.get(`/surveys/${id}/stats`);
 export const exportSurveyStats = (id) => API.get(`/surveys/${id}/export-stats`, { responseType: 'blob' });
-
-// Скачивание файлов (корреляция, алгоритм)
 export const downloadFile = (filename) => API.get(`/download/${filename}`, { responseType: 'blob' });
+
+// Экспорт самого экземпляра API (для прямых запросов, например bulk-submit)
+export { API };
