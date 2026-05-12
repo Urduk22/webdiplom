@@ -16,11 +16,8 @@ export default function Login() {
         try {
             const res = await login(username, password);
             const { access_token } = res.data;
-            // Сохраняем токен в localStorage для интерцептора
             localStorage.setItem('token', access_token);
-            // Получаем данные пользователя
             const userRes = await getMe();
-            // Обновляем контекст
             authLogin(access_token, userRes.data);
             navigate('/');
         } catch (err) {
@@ -42,7 +39,7 @@ export default function Login() {
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
                         required
-                        autoComplete="off"
+                        autoComplete="username"
                         InputLabelProps={{ shrink: true }}
                     />
                     <TextField
@@ -53,7 +50,7 @@ export default function Login() {
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         required
-                        autoComplete="new-password"
+                        autoComplete="current-password"
                         InputLabelProps={{ shrink: true }}
                     />
                     <Button fullWidth variant="contained" type="submit" sx={{ mt: 2 }}>

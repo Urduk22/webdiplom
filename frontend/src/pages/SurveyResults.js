@@ -69,8 +69,16 @@ export default function SurveyResults() {
           <TextField label="Cap" type="number" size="small" value={params.cap} onChange={(e) => setParams({...params, cap: parseInt(e.target.value)})} sx={{ width: 100 }} />
           <TextField label="Frac" type="number" size="small" value={params.frac} onChange={(e) => setParams({...params, frac: parseFloat(e.target.value)})} sx={{ width: 100 }} />
           <TextField label="q" type="number" size="small" value={params.q} onChange={(e) => setParams({...params, q: parseFloat(e.target.value)})} sx={{ width: 100 }} />
-          <TextField label="Целевой столбец" size="small" value={params.target_column} onChange={(e) => setParams({...params, target_column: e.target.value})} sx={{ width: 150 }} />
+          <TextField label="Целевой столбец (номер)"
+    type="number"
+    size="small"
+    value={params.target_column}
+    onChange={(e) => setParams({...params, target_column: e.target.value})}
+    sx={{ width: 150 }}
+    InputLabelProps={{ shrink: true }}
+            />
           <Select size="small" value={params.method} onChange={(e) => setParams({...params, method: e.target.value})} sx={{ width: 120 }}>
+
             <MenuItem value="graph">Графовый</MenuItem>
             <MenuItem value="correlation">Корреляция</MenuItem>
             <MenuItem value="anova">ANOVA</MenuItem>
