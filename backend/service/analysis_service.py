@@ -119,32 +119,45 @@ def generate_correlation_heatmap(correlation_matrix, max_cols=30):
     return pio.to_html(fig, full_html=False, include_plotlyjs='cdn')
 
 def generate_pca_plot(df_processed, n_components=5):
+    # Удаляем константные столбцы
     non_const_cols = [col for col in df_processed.columns if df_processed[col].std() != 0]
     if len(non_const_cols) < 2:
-        return "<p>Недостаточно неконстантных признаков для PCA</p>"
+        return "<p>Недостаточно признаков для PCA (нужно минимум 2 различных)</p>"
     data = df_processed[non_const_cols]
+
+    # Стандартизация
     scaler = StandardScaler()
     data_scaled = scaler.fit_transform(data)
+
+    # Регуляризация для вырожденных матриц
     rank = np.linalg.matrix_rank(data_scaled)
     if rank < data_scaled.shape[1]:
-        data_scaled += np.random.normal(0, 1e-6, data_scaled.shape)
+        # Добавляем малый шум и регуляризуем через SVD
+        data_scaled += np.random.normal(0, 1e-8, data_scaled.shape)
         U, s, Vt = np.linalg.svd(data_scaled, full_matrices=False)
         s_reg = s + 1e-6
         data_scaled = U @ np.diag(s_reg) @ Vt
+
     n = min(n_components, data_scaled.shape[1])
     pca = PCA(n_components=n)
     pca.fit(data_scaled)
     explained_variance = pca.explained_variance_ratio_
     cumulative = np.cumsum(explained_variance)
+
     fig = go.Figure()
-    fig.add_trace(go.Bar(x=[f'PC{i+1}' for i in range(n)], y=explained_variance, name='Объяснённая дисперсия', marker_color='lightblue'))
-    fig.add_trace(go.Scatter(x=[f'PC{i+1}' for i in range(n)], y=cumulative, name='Кумулятивная дисперсия', mode='lines+markers', marker_color='darkblue', yaxis='y2'))
+    fig.add_trace(go.Bar(x=[f'PC{i+1}' for i in range(n)], y=explained_variance,
+                         name='Объяснённая дисперсия', marker_color='lightblue'))
+    fig.add_trace(go.Scatter(x=[f'PC{i+1}' for i in range(n)], y=cumulative,
+                             name='Кумулятивная дисперсия', mode='lines+markers',
+                             marker_color='darkblue', yaxis='y2'))
     fig.update_layout(
         title=None,
         xaxis_title='Главные компоненты',
         yaxis_title='Доля дисперсии',
         yaxis2=dict(title='Кумулятивная доля', overlaying='y', side='right'),
-        hovermode='closest'
+        hovermode='closest',
+        width=700,
+        height=500
     )
     return pio.to_html(fig, full_html=False, include_plotlyjs='cdn')
 
@@ -215,7 +228,33 @@ def generate_results(df_processed, threshold, params, original_filename, process
             else:
                 algorithm_details = f"ANOVA: целевая переменная '{target_column}' имеет {target.nunique()} уникальных значений, требуется категориальная (<10)."
     elif method == "pca":
-        algorithm_details = "PCA не отбирает исходные признаки, а показывает объяснённую дисперсию. См. график выше."
+        # --- НАЧАЛО ИСПРАВЛЕННОГО БЛОКА PCA ---
+        non_const_cols = [col for col in df_processed.columns if df_processed[col].std() != 0]
+        if len(non_const_cols) < 2:
+            algorithm_details = "PCA: недостаточно изменчивых признаков."
+        else:
+            from sklearn.preprocessing import StandardScaler
+            from sklearn.decomposition import PCA
+            data = df_processed[non_const_cols]
+            scaler = StandardScaler()
+            data_scaled = scaler.fit_transform(data)
+            rank = np.linalg.matrix_rank(data_scaled)
+            if rank < data_scaled.shape[1]:
+                data_scaled += np.random.normal(0, 1e-8, data_scaled.shape)
+                U, s, Vt = np.linalg.svd(data_scaled, full_matrices=False)
+                s_reg = s + 1e-6
+                data_scaled = U @ np.diag(s_reg) @ Vt
+            n_comp = min(top_k, data_scaled.shape[1])
+            pca = PCA(n_components=n_comp)
+            pca.fit(data_scaled)
+            expl_var = pca.explained_variance_ratio_
+            cum_var = np.cumsum(expl_var)
+            lines = []
+            for i in range(n_comp):
+                lines.append(f"PC{i+1}: {expl_var[i]*100:.2f}% (кумулятивно: {cum_var[i]*100:.2f}%)")
+            algorithm_details = "Объяснённая дисперсия:\n" + "\n".join(lines)
+        # --- КОНЕЦ БЛОКА PCA ---
+        selected_columns = []
     else:
         algorithm_details = f"Неизвестный метод: {method}. Доступны: graph, correlation, anova, pca."
 
