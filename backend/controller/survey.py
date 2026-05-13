@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from database import get_db
-from models import Survey, Question, Option, Response, Answer
+from models import Survey, Question, Option, Response, Answer, generate_public_id
 from backend.service.auth_service import get_current_user
 from backend.service.survey_service import get_survey_stats_data
 from core.schemas import SurveyCreate
@@ -11,14 +11,50 @@ import pandas as pd
 
 router = APIRouter(prefix="/api", tags=["surveys"])
 
+@router.get("/surveys/public/{public_id}")
+async def get_survey_by_public_id(public_id: str, db: Session = Depends(get_db)):
+    print(f"[DEBUG] Ищем опрос с public_id = {public_id}")
+    survey = db.query(Survey).filter(Survey.public_id == public_id).first()
+    if not survey:
+        print("[DEBUG] Опрос не найден")
+        raise HTTPException(404, "Survey not found")
+    print(f"[DEBUG] Найден опрос id = {survey.id}")
+    questions = db.query(Question).filter(Question.survey_id == survey.id).order_by(Question.order).all()
+    result = {
+        "id": survey.id,
+        "title": survey.title,
+        "description": survey.description,
+        "created_at": survey.created_at,
+        "questions": []
+    }
+    for q in questions:
+        options = db.query(Option).filter(Option.question_id == q.id).all()
+        result["questions"].append({
+            "id": q.id,
+            "text": q.text,
+            "question_type": q.question_type,
+            "scale_min": q.scale_min,
+            "scale_max": q.scale_max,
+            "options": [{"id": opt.id, "text": opt.text} for opt in options]
+        })
+    return result
 
 @router.get("/surveys")
-async def list_surveys(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+async def list_surveys(db: Session = Depends(get_db), current_user = Depends(get_current_user)):
     if current_user.role == "admin":
         surveys = db.query(Survey).all()
     else:
         surveys = db.query(Survey).filter(Survey.owner_id == current_user.id).all()
-    return surveys
+    return [
+        {
+            "id": s.id,
+            "title": s.title,
+            "description": s.description,
+            "created_at": s.created_at,
+            "public_id": s.public_id
+        }
+        for s in surveys
+    ]
 
 
 @router.get("/surveys/{survey_id}")
@@ -50,7 +86,12 @@ async def get_survey(survey_id: int, db: Session = Depends(get_db)):
 @router.post("/surveys")
 async def create_survey(survey_data: SurveyCreate, db: Session = Depends(get_db),
                         current_user=Depends(get_current_user)):
-    db_survey = Survey(title=survey_data.title, description=survey_data.description, owner_id=current_user.id)
+    db_survey = Survey(
+        title=survey_data.title,
+        description=survey_data.description,
+        owner_id=current_user.id,
+        public_id=generate_public_id()
+    )
     db.add(db_survey)
     db.commit()
     db.refresh(db_survey)
@@ -120,7 +161,6 @@ async def submit_response(survey_id: int, answers: dict, db: Session = Depends(g
     return {"message": "Thank you!"}
 
 
-# ---- НОВЫЙ ЭНДПОИНТ ДЛЯ МАССОВОЙ ВСТАВКИ ----
 @router.post("/surveys/{survey_id}/bulk-submit")
 async def bulk_submit_responses(
         survey_id: int,
@@ -128,7 +168,6 @@ async def bulk_submit_responses(
         db: Session = Depends(get_db),
         current_user=Depends(get_current_user)
 ):
-    # Проверяем, что опрос принадлежит текущему пользователю
     survey = db.query(Survey).filter(Survey.id == survey_id).first()
     if not survey:
         raise HTTPException(404, "Survey not found")
@@ -138,13 +177,11 @@ async def bulk_submit_responses(
     response_objects = []
     answer_objects = []
 
-    # Создаём все Response (по одному на каждый набор ответов)
     for _ in responses_data:
         response_objects.append(Response(survey_id=survey_id))
     db.add_all(response_objects)
-    db.flush()  # присваиваем id, но не коммитим
+    db.flush()
 
-    # Создаём Answer для каждого ответа
     for idx, resp_data in enumerate(responses_data):
         response_id = response_objects[idx].id
         for q_id_str, value in resp_data.items():

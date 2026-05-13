@@ -12,6 +12,7 @@ import Surveys from './pages/Surveys';
 import CreateSurvey from './pages/CreateSurvey';
 import ImportSurvey from './pages/ImportSurvey';
 import TakeSurvey from './pages/TakeSurvey';
+import TakePublicSurvey from './pages/TakePublicSurvey';
 import SurveyResults from './pages/SurveyResults';
 import SurveyStats from './pages/SurveyStats';
 import UploadAnalysis from './pages/UploadAnalysis';
@@ -32,13 +33,11 @@ function AppContent() {
     return (
         <Layout>
             <Routes>
-                {/* Главная страница – доступна всем */}
                 <Route path="/" element={<UploadAnalysis />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
-                {/* Прохождение опроса – доступно всем */}
                 <Route path="/surveys/:id" element={<TakeSurvey />} />
-                {/* Защищённые маршруты */}
+                <Route path="/surveys/public/:publicId" element={<TakePublicSurvey />} />
                 <Route path="/surveys" element={<ProtectedRoute><Surveys /></ProtectedRoute>} />
                 <Route path="/create-survey" element={<ProtectedRoute><CreateSurvey /></ProtectedRoute>} />
                 <Route path="/import-survey" element={<ProtectedRoute><ImportSurvey /></ProtectedRoute>} />

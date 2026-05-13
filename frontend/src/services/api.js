@@ -34,6 +34,7 @@ export const getMe = () => API.get('/me');
 // Опросы
 export const getSurveys = () => API.get('/surveys');
 export const getSurvey = (id) => API.get(`/surveys/${id}`);
+export const getSurveyByPublicId = (publicId) => API.get(`/surveys/public/${publicId}`);
 export const createSurvey = (data) => API.post('/surveys', data);
 export const deleteSurvey = (id) => API.delete(`/surveys/${id}`);
 export const submitResponse = (id, answers) => API.post(`/surveys/${id}/submit`, answers);

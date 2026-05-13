@@ -2,13 +2,19 @@ from sqlalchemy import Column, Integer, String, ForeignKey, Float, DateTime, Tex
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from database import Base
+import random
+import string
+
+def generate_public_id(length=8):
+    chars = string.ascii_letters + string.digits
+    return ''.join(random.choices(chars, k=length))
 
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True)
     hashed_password = Column(String)
-    role = Column(String, default="user")   # 'user' или 'admin'
+    role = Column(String, default="user")
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     surveys = relationship("Survey", back_populates="owner")
@@ -20,6 +26,7 @@ class Survey(Base):
     description = Column(Text, nullable=True)
     owner_id = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime, default=datetime.utcnow)
+    public_id = Column(String(10), unique=True, index=True, nullable=False, default=generate_public_id)
     owner = relationship("User", back_populates="surveys")
     questions = relationship("Question", back_populates="survey", cascade="all, delete-orphan")
     responses = relationship("Response", back_populates="survey", cascade="all, delete-orphan")

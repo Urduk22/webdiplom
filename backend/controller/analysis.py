@@ -29,7 +29,6 @@ async def analyze_file(
     target_column: str = Form(""),
     method: str = Form("graph"),
     top_k: int = Form(10),
-    current_user = Depends(get_current_user)
 ):
     file_path, original_filename = save_upload_file(file)
     try:
@@ -86,7 +85,6 @@ async def export_analysis_pdf(
     target_column: str = Form(""),
     method: str = Form("graph"),
     top_k: int = Form(10),
-    current_user = Depends(get_current_user)
 ):
     # Выполняем анализ (как в /analyze) и генерируем PDF
     file_path, original_filename = save_upload_file(file)
