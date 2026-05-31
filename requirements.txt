@@ -13,3 +13,4 @@ xlrd
 odfpy
 reportlab
 kaleido
+PyJWT
