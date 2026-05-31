@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+sqlalchemy
+passlib
+bcrypt
+python-multipart
+pandas
+numpy
+plotly
+scikit-learn
+openpyxl
+xlrd
+odfpy
+reportlab
+kaleido
