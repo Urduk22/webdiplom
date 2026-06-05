@@ -15,7 +15,6 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.feature_selection import SelectKBest, f_classif, f_regression
 import io
 import tempfile
-import time
 
 from reportlab.lib.pagesizes import landscape, A4
 from reportlab.lib import colors
@@ -24,15 +23,6 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-
-current_dir = os.path.dirname(os.path.abspath(__file__))
-arial_path = os.path.join(current_dir, 'arial.ttf')
-
-if os.path.exists(arial_path):
-    pdfmetrics.registerFont(TTFont('Arial', arial_path))
-    DEFAULT_FONT = 'Arial'
-else:
-    DEFAULT_FONT = 'Helvetica'   # fallback
 
 UPLOAD_DIR = "uploads"
 RESULTS_DIR = "results"
@@ -79,79 +69,46 @@ def generate_correlation_graph(correlation_matrix, threshold=0.3):
     ))
     return pio.to_html(fig, full_html=False, include_plotlyjs='cdn')
 
-def generate_correlation_heatmap(correlation_matrix, max_cols=30):
-    if correlation_matrix.shape[1] > max_cols:
-        corr_subset = correlation_matrix.iloc[:max_cols, :max_cols]
-        print(f"[Heatmap] Ограничено отображение {corr_subset.shape[1]} признаков из {correlation_matrix.shape[1]}")
-    else:
-        corr_subset = correlation_matrix
-
+def generate_correlation_heatmap(correlation_matrix):
     fig = go.Figure(data=go.Heatmap(
-        z=corr_subset.values,
-        x=corr_subset.columns,
-        y=corr_subset.columns,
+        z=correlation_matrix.values,
+        x=correlation_matrix.columns,
+        y=correlation_matrix.columns,
         colorscale='RdBu',
         zmid=0,
-        text=corr_subset.values.round(2),
+        text=correlation_matrix.values.round(2),
         texttemplate='%{text}',
         textfont={"size": 8},
         hoverongaps=False
     ))
-    fig.update_layout(
-        title=None,
-        xaxis_title=None,
-        yaxis_title=None,
-        width=1000,
-        height=1000,
-        xaxis=dict(
-            tickangle=45,
-            tickfont=dict(size=7),
-            nticks=30 if corr_subset.shape[1] > 30 else corr_subset.shape[1]
-        ),
-        yaxis=dict(
-            tickfont=dict(size=7),
-            nticks=30 if corr_subset.shape[1] > 30 else corr_subset.shape[1]
-        )
-    )
+    fig.update_layout(title=None, xaxis_title=None, yaxis_title=None, width=800, height=800)
     return pio.to_html(fig, full_html=False, include_plotlyjs='cdn')
 
 def generate_pca_plot(df_processed, n_components=5):
-
+    if df_processed.shape[0] < 2 or df_processed.shape[1] < 2:
+        return "<p>Недостаточно данных для PCA (нужно минимум 2 строки и 2 признака)</p>"
     non_const_cols = [col for col in df_processed.columns if df_processed[col].std() != 0]
     if len(non_const_cols) < 2:
-        return "<p>Недостаточно признаков для PCA (нужно минимум 2 различных)</p>"
+        return "<p>Недостаточно неконстантных признаков для PCA</p>"
     data = df_processed[non_const_cols]
-
     scaler = StandardScaler()
     data_scaled = scaler.fit_transform(data)
-
-    rank = np.linalg.matrix_rank(data_scaled)
-    if rank < data_scaled.shape[1]:
-        data_scaled += np.random.normal(0, 1e-8, data_scaled.shape)
-        U, s, Vt = np.linalg.svd(data_scaled, full_matrices=False)
-        s_reg = s + 1e-6
-        data_scaled = U @ np.diag(s_reg) @ Vt
-
-    n = min(n_components, data_scaled.shape[1])
-    pca = PCA(n_components=n)
+    n_comp = min(n_components, data_scaled.shape[1], data_scaled.shape[0])
+    if n_comp < 1:
+        return "<p>Невозможно вычислить PCA: слишком мало компонент</p>"
+    pca = PCA(n_components=n_comp)
     pca.fit(data_scaled)
     explained_variance = pca.explained_variance_ratio_
     cumulative = np.cumsum(explained_variance)
-
     fig = go.Figure()
-    fig.add_trace(go.Bar(x=[f'PC{i+1}' for i in range(n)], y=explained_variance,
-                         name='Объяснённая дисперсия', marker_color='lightblue'))
-    fig.add_trace(go.Scatter(x=[f'PC{i+1}' for i in range(n)], y=cumulative,
-                             name='Кумулятивная дисперсия', mode='lines+markers',
-                             marker_color='darkblue', yaxis='y2'))
+    fig.add_trace(go.Bar(x=[f'PC{i+1}' for i in range(n_comp)], y=explained_variance, name='Объяснённая дисперсия', marker_color='lightblue'))
+    fig.add_trace(go.Scatter(x=[f'PC{i+1}' for i in range(n_comp)], y=cumulative, name='Кумулятивная дисперсия', mode='lines+markers', marker_color='darkblue', yaxis='y2'))
     fig.update_layout(
         title=None,
         xaxis_title='Главные компоненты',
         yaxis_title='Доля дисперсии',
         yaxis2=dict(title='Кумулятивная доля', overlaying='y', side='right'),
-        hovermode='closest',
-        width=700,
-        height=500
+        hovermode='closest'
     )
     return pio.to_html(fig, full_html=False, include_plotlyjs='cdn')
 
@@ -177,11 +134,8 @@ def generate_results(df_processed, threshold, params, original_filename, process
     base_name = os.path.splitext(original_filename)[0]
     corr_filename = f"{base_name}_correlation_{timestamp}.csv"
     corr_path = os.path.join(RESULTS_DIR, corr_filename)
-    correlation_matrix.to_csv(corr_path)
-    start_corr = time.time()
-    correlation_matrix, _ = apply_correlation_threshold(df_processed, threshold)
-    corr_time = time.time() - start_corr
-    print(f"[TIMING] Построение матрицы корреляций: {corr_time:.2f} секунд")
+    correlation_matrix.to_csv(corr_path, sep=';', decimal=',')
+
     heatmap_html = generate_correlation_heatmap(correlation_matrix)
     graph_html = generate_correlation_graph(correlation_matrix, threshold=0.3)
     pca_html = ""
@@ -225,31 +179,7 @@ def generate_results(df_processed, threshold, params, original_filename, process
             else:
                 algorithm_details = f"ANOVA: целевая переменная '{target_column}' имеет {target.nunique()} уникальных значений, требуется категориальная (<10)."
     elif method == "pca":
-        non_const_cols = [col for col in df_processed.columns if df_processed[col].std() != 0]
-        if len(non_const_cols) < 2:
-            algorithm_details = "PCA: недостаточно изменчивых признаков."
-        else:
-            from sklearn.preprocessing import StandardScaler
-            from sklearn.decomposition import PCA
-            data = df_processed[non_const_cols]
-            scaler = StandardScaler()
-            data_scaled = scaler.fit_transform(data)
-            rank = np.linalg.matrix_rank(data_scaled)
-            if rank < data_scaled.shape[1]:
-                data_scaled += np.random.normal(0, 1e-8, data_scaled.shape)
-                U, s, Vt = np.linalg.svd(data_scaled, full_matrices=False)
-                s_reg = s + 1e-6
-                data_scaled = U @ np.diag(s_reg) @ Vt
-            n_comp = min(top_k, data_scaled.shape[1])
-            pca = PCA(n_components=n_comp)
-            pca.fit(data_scaled)
-            expl_var = pca.explained_variance_ratio_
-            cum_var = np.cumsum(expl_var)
-            lines = []
-            for i in range(n_comp):
-                lines.append(f"PC{i+1}: {expl_var[i]*100:.2f}% (кумулятивно: {cum_var[i]*100:.2f}%)")
-            algorithm_details = "Объяснённая дисперсия:\n" + "\n".join(lines)
-        selected_columns = []
+        algorithm_details = "PCA не отбирает исходные признаки, а показывает объяснённую дисперсию. См. график выше."
     else:
         algorithm_details = f"Неизвестный метод: {method}. Доступны: graph, correlation, anova, pca."
 
@@ -257,6 +187,7 @@ def generate_results(df_processed, threshold, params, original_filename, process
     algo_path = os.path.join(RESULTS_DIR, algo_filename)
     with open(algo_path, "w", encoding="utf-8") as f:
         f.write(algorithm_details)
+
     return {
         "selected_columns": selected_columns,
         "w_max": float(w_max),
@@ -285,78 +216,92 @@ def generate_pdf_report_from_df(results, df_processed):
 
         if corr_file:
             corr_path = os.path.join(RESULTS_DIR, corr_file)
-            corr_df = pd.read_csv(corr_path, index_col=0)
+            if os.path.exists(corr_path):
+                corr_df = pd.read_csv(corr_path, index_col=0, sep=';', decimal=',')
+                fig_heat = go.Figure(data=go.Heatmap(
+                    z=corr_df.values,
+                    x=corr_df.columns,
+                    y=corr_df.columns,
+                    colorscale='RdBu',
+                    zmid=0
+                ))
+                fig_heat.update_layout(title=None, width=600, height=600)
+                heatmap_path = os.path.join(tmpdir, 'heatmap.png')
+                fig_heat.write_image(heatmap_path, format='png')
 
-            fig_heat = go.Figure(data=go.Heatmap(
-                z=corr_df.values,
-                x=corr_df.columns,
-                y=corr_df.columns,
-                colorscale='RdBu',
-                zmid=0
-            ))
-            fig_heat.update_layout(title=None, width=600, height=600)
-            heatmap_path = os.path.join(tmpdir, 'heatmap.png')
-            fig_heat.write_image(heatmap_path, format='png')
-
-            columns = corr_df.columns.tolist()
-            n = len(columns)
-            edges = []
-            threshold = results.get('threshold', 0.3)
-            for i in range(n):
-                for j in range(i+1, n):
-                    if abs(corr_df.iloc[i, j]) >= threshold:
-                        edges.append((i, j))
-            if edges:
-                angle_step = 2 * math.pi / n
-                pos = {i: (math.cos(i*angle_step), math.sin(i*angle_step)) for i in range(n)}
-                edge_x, edge_y = [], []
-                for i, j in edges:
-                    x0, y0 = pos[i]; x1, y1 = pos[j]
-                    edge_x.extend([x0, x1, None]); edge_y.extend([y0, y1, None])
-                edge_trace = go.Scatter(x=edge_x, y=edge_y, mode='lines', line=dict(color='gray'))
-                node_trace = go.Scatter(
-                    x=[pos[i][0] for i in range(n)], y=[pos[i][1] for i in range(n)],
-                    mode='markers+text', text=columns, textposition='top center',
-                    marker=dict(size=8, color='lightblue')
-                )
-                fig_graph = go.Figure(data=[edge_trace, node_trace])
-                fig_graph.update_layout(title=None, showlegend=False, width=600, height=600,
-                                        xaxis=dict(visible=False), yaxis=dict(visible=False))
-                graph_path = os.path.join(tmpdir, 'graph.png')
-                fig_graph.write_image(graph_path, format='png')
+                columns = corr_df.columns.tolist()
+                n = len(columns)
+                edges = []
+                threshold = results.get('threshold', 0.3)
+                for i in range(n):
+                    for j in range(i+1, n):
+                        if abs(corr_df.iloc[i, j]) >= threshold:
+                            edges.append((i, j))
+                if edges:
+                    angle_step = 2 * math.pi / n
+                    pos = {i: (math.cos(i*angle_step), math.sin(i*angle_step)) for i in range(n)}
+                    edge_x, edge_y = [], []
+                    for i, j in edges:
+                        x0, y0 = pos[i]; x1, y1 = pos[j]
+                        edge_x.extend([x0, x1, None]); edge_y.extend([y0, y1, None])
+                    edge_trace = go.Scatter(x=edge_x, y=edge_y, mode='lines', line=dict(color='gray'))
+                    node_trace = go.Scatter(
+                        x=[pos[i][0] for i in range(n)], y=[pos[i][1] for i in range(n)],
+                        mode='markers+text', text=columns, textposition='top center',
+                        marker=dict(size=8, color='lightblue')
+                    )
+                    fig_graph = go.Figure(data=[edge_trace, node_trace])
+                    fig_graph.update_layout(title=None, showlegend=False, width=600, height=600,
+                                            xaxis=dict(visible=False), yaxis=dict(visible=False))
+                    graph_path = os.path.join(tmpdir, 'graph.png')
+                    fig_graph.write_image(graph_path, format='png')
 
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=landscape(A4),
                                 rightMargin=20, leftMargin=20, topMargin=30, bottomMargin=30)
+
+        try:
+            arial_path = "C:/Windows/Fonts/arial.ttf"
+            if os.path.exists(arial_path):
+                pdfmetrics.registerFont(TTFont('Arial', arial_path))
+                FONT_NAME = 'Arial'
+            else:
+                FONT_NAME = 'Helvetica'
+        except:
+            FONT_NAME = 'Helvetica'
+
         styles = getSampleStyleSheet()
         for style_name in styles.byName:
-            styles[style_name].fontName = DEFAULT_FONT
+            styles[style_name].fontName = FONT_NAME
+        title_style = ParagraphStyle('CustomTitle', parent=styles['Title'], fontName=FONT_NAME, fontSize=16, leading=20, alignment=1)
+        heading_style = ParagraphStyle('CustomHeading', parent=styles['Heading2'], fontName=FONT_NAME)
+        normal_style = ParagraphStyle('CustomNormal', parent=styles['Normal'], fontName=FONT_NAME)
 
         story = []
 
-        story.append(Paragraph("Отчёт по анализу данных", styles['Title']))
+        story.append(Paragraph("Отчёт по анализу данных", title_style))
         story.append(Spacer(1, 12))
-        story.append(Paragraph(f"Файл: {results.get('original_filename', 'неизвестен')}", styles['Normal']))
-        story.append(Paragraph(f"Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}", styles['Normal']))
+        story.append(Paragraph(f"Файл: {results.get('original_filename', 'неизвестен')}", normal_style))
+        story.append(Paragraph(f"Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}", normal_style))
         story.append(Spacer(1, 12))
 
-        story.append(Paragraph("Параметры анализа:", styles['Heading2']))
-        story.append(Paragraph(f"Метод: {results.get('method', 'graph')}", styles['Normal']))
-        story.append(Paragraph(f"Порог корреляции: {results.get('threshold', 0.3)}", styles['Normal']))
+        story.append(Paragraph("Параметры анализа:", heading_style))
+        story.append(Paragraph(f"Метод: {results.get('method', 'graph')}", normal_style))
+        story.append(Paragraph(f"Порог корреляции: {results.get('threshold', 0.3)}", normal_style))
         params_dict = results.get('params', {})
-        story.append(Paragraph(f"Запусков: {params_dict.get('n_launches', '?')}, решений: {params_dict.get('n_solutions', '?')}", styles['Normal']))
+        story.append(Paragraph(f"Запусков: {params_dict.get('n_launches', '?')}, решений: {params_dict.get('n_solutions', '?')}", normal_style))
         story.append(Spacer(1, 12))
 
-        story.append(Paragraph("Выбранные признаки:", styles['Heading2']))
+        story.append(Paragraph("Выбранные признаки:", heading_style))
         for col in results.get('selected_columns', [])[:20]:
-            story.append(Paragraph(f"- {col}", styles['Normal']))
+            story.append(Paragraph(f"- {col}", normal_style))
         if len(results.get('selected_columns', [])) > 20:
-            story.append(Paragraph(f"... и ещё {len(results.get('selected_columns', []))-20} признаков", styles['Normal']))
+            story.append(Paragraph(f"... и ещё {len(results.get('selected_columns', []))-20} признаков", normal_style))
         story.append(Spacer(1, 12))
 
-        story.append(Paragraph("Матрица корреляции (фрагмент 10×10):", styles['Heading2']))
+        story.append(Paragraph("Матрица корреляции (фрагмент 10×10):", heading_style))
         try:
-            corr_df_loc = pd.read_csv(os.path.join(RESULTS_DIR, results['correlation_file']), index_col=0)
+            corr_df_loc = pd.read_csv(os.path.join(RESULTS_DIR, results['correlation_file']), index_col=0, sep=';', decimal=',')
             sub = corr_df_loc.iloc[:10, :10]
             data_table = [sub.columns.tolist()] + sub.values.tolist()
             t = Table(data_table)
@@ -369,16 +314,16 @@ def generate_pdf_report_from_df(results, df_processed):
             ]))
             story.append(t)
         except Exception as e:
-            story.append(Paragraph(f"Матрица недоступна: {str(e)}", styles['Normal']))
+            story.append(Paragraph(f"Матрица недоступна: {str(e)}", normal_style))
         story.append(Spacer(1, 12))
 
         if heatmap_path:
-            story.append(Paragraph("Тепловая карта корреляций:", styles['Heading2']))
+            story.append(Paragraph("Тепловая карта корреляций:", heading_style))
             story.append(Image(heatmap_path, width=6*inch, height=6*inch))
             story.append(Spacer(1, 12))
 
         if graph_path:
-            story.append(Paragraph("Граф корреляций:", styles['Heading2']))
+            story.append(Paragraph("Граф корреляций:", heading_style))
             story.append(Image(graph_path, width=6*inch, height=6*inch))
             story.append(Spacer(1, 12))
 

@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
 from fastapi.responses import StreamingResponse
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from database import get_db
 from backend.service.auth_service import get_current_user
@@ -10,6 +11,7 @@ from core.correlation import apply_correlation_threshold
 import pandas as pd
 import numpy as np
 from models import Survey, Question, Option, Response, Answer
+
 
 router = APIRouter(prefix="/api", tags=["analysis"])
 
@@ -48,8 +50,19 @@ async def analyze_file(
         import os
         os.unlink(file_path)
         raise HTTPException(400, "После предобработки не осталось данных")
-    if target_column and target_column not in df_processed.columns:
-        target_column = None
+
+    target_col_name = None
+    if target_column and target_column.strip():
+        try:
+            col_idx = int(target_column) - 1
+            if 0 <= col_idx < len(df_processed.columns):
+                target_col_name = df_processed.columns[col_idx]
+                print(f"DEBUG: целевой столбец преобразован: номер {target_column} -> имя '{target_col_name}'")
+            else:
+                print(f"DEBUG: номер столбца {target_column} вне диапазона (0..{len(df_processed.columns)-1})")
+        except ValueError:
+            print(f"DEBUG: не удалось преобразовать target_column '{target_column}' в число")
+
     _, correlation_details = apply_correlation_threshold(df_processed, threshold)
     params = {
         "n_launches": n_launches,
@@ -61,13 +74,17 @@ async def analyze_file(
     results = generate_results(
         df_processed, threshold, params, original_filename,
         process_details, correlation_details,
-        target_column=target_column if target_column else None,
+        target_column=target_col_name,
         method=method,
         top_k=top_k
     )
     import os
     os.unlink(file_path)
     return results
+
+@router.options("/analyze/export-pdf")
+async def options_export_pdf():
+    return Response(status_code=200)
 
 @router.post("/analyze/export-pdf")
 async def export_analysis_pdf(
@@ -104,8 +121,16 @@ async def export_analysis_pdf(
         import os
         os.unlink(file_path)
         raise HTTPException(400, "После предобработки не осталось данных")
-    if target_column and target_column not in df_processed.columns:
-        target_column = None
+
+    target_col_name = None
+    if target_column and target_column.strip():
+        try:
+            col_idx = int(target_column) - 1
+            if 0 <= col_idx < len(df_processed.columns):
+                target_col_name = df_processed.columns[col_idx]
+        except ValueError:
+            pass
+
     _, correlation_details = apply_correlation_threshold(df_processed, threshold)
     params = {
         "n_launches": n_launches,
@@ -117,7 +142,7 @@ async def export_analysis_pdf(
     results = generate_results(
         df_processed, threshold, params, original_filename,
         process_details, correlation_details,
-        target_column=target_column if target_column else None,
+        target_column=target_col_name,
         method=method,
         top_k=top_k
     )

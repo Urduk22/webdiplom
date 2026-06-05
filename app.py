@@ -9,6 +9,8 @@ from fastapi.responses import FileResponse
 from database import engine
 from models import Base
 from backend.controller import auth, survey, analysis
+from backend.service.analysis_service import RESULTS_DIR
+
 
 Base.metadata.create_all(bind=engine)
 
@@ -16,7 +18,7 @@ app = FastAPI(title="Survey Data Analyzer API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:8000"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -36,6 +38,13 @@ if os.path.exists(BUILD_DIR) and os.path.isdir(BUILD_DIR):
         async def favicon():
             return FileResponse(favicon_path)
 
+
+    @app.get("/api/download/{filename}")
+    async def download_file(filename: str):
+        file_path = os.path.join(RESULTS_DIR, filename)
+        if os.path.exists(file_path):
+            return FileResponse(file_path, media_type='application/octet-stream', filename=filename)
+        raise HTTPException(status_code=404, detail="File not found")
     @app.get("/{full_path:path}")
     async def serve_react_app(full_path: str):
         if full_path.startswith("api"):

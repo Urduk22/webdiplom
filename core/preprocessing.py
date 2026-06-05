@@ -1,21 +1,17 @@
 import pandas as pd
 import re
-import numpy as np
 
 def clean_column_names(df):
     original_columns = df.columns.tolist()
     clean_columns = []
-
     for col in df.columns:
         col_str = str(col)
         col_clean = col_str.strip()
         col_clean = col_clean.replace(' ', '_')
-        col_clean = re.sub(r'[^a-zA-Z0-9_]', '', col_clean)
-        col_clean = col_clean.lower()
+        col_clean = re.sub(r'[^a-zA-Zа-яА-ЯёЁ0-9_]', '', col_clean)
         if not col_clean:
             col_clean = f"column_{original_columns.index(col)}"
         clean_columns.append(col_clean)
-
     final_columns = []
     seen = {}
     for col in clean_columns:
@@ -25,7 +21,6 @@ def clean_column_names(df):
         else:
             seen[col] = 1
             final_columns.append(col)
-
     df_clean = df.copy()
     df_clean.columns = final_columns
     return df_clean, original_columns, final_columns
@@ -36,15 +31,13 @@ def convert_comma_to_dot(value):
     return value
 
 def preprocess_data(df, drop_first_column=False, fill_na_with_zero=True,
-                    encode_categorical=False, max_categories=10):
-
+                    encode_categorical=False, max_categories=20):
     original_shape = df.shape
     df, original_columns, final_columns = clean_column_names(df)
 
     if drop_first_column and len(df.columns) > 0:
         first_column_name = df.columns[0]
         df = df.drop(columns=[first_column_name])
-        final_columns = final_columns[1:] if len(final_columns) > 1 else []
         if len(df.columns) == 0:
             return pd.DataFrame(), "После удаления первого столбца не осталось данных"
 
@@ -56,10 +49,8 @@ def preprocess_data(df, drop_first_column=False, fill_na_with_zero=True,
         empty_count = df[column].isna().sum() + (df[column].astype(str).str.strip() == '').sum()
         total_count = len(df[column])
         empty_percentage = (empty_count / total_count) * 100 if total_count > 0 else 100
-
         if empty_percentage > 30:
             columns_to_drop.append(column)
-
     if columns_to_drop:
         df = df.drop(columns=columns_to_drop)
         print(f"Удалено столбцов с >30% пустых значений: {len(columns_to_drop)}")
@@ -68,44 +59,47 @@ def preprocess_data(df, drop_first_column=False, fill_na_with_zero=True,
     if len(df.columns) == 0:
         return pd.DataFrame(), "После удаления столбцов с пустыми значениями не осталось данных"
 
+    print("  Преобразование столбцов...")
+    for col in df.columns:
+        numeric_attempt = pd.to_numeric(df[col], errors='coerce')
+        if numeric_attempt.notna().sum() / len(df) >= 0.6:
+            df[col] = numeric_attempt
+            print(f"    Столбец '{col}' преобразован в числовой")
+        else:
+            df[col] = df[col].astype(str).str.strip()
+            df[col] = df[col].replace('', 'missing')
+            print(f"    Столбец '{col}' оставлен как категориальный")
+
     if fill_na_with_zero:
-        print("  Заполняем пропуски нулями...")
         df = df.fillna(0)
         rows_removed = 0
     else:
-        print("  Удаляем строки с пропусками...")
         df_clean = df.dropna()
         rows_removed = original_shape[0] - df_clean.shape[0]
         df = df_clean
 
     encoded_summary = []
     if encode_categorical:
-        print(f"  Кодирование категориальных столбцов методом One-Hot (макс. уникальных = {max_categories})...")
+        print(f"  One-Hot кодирование...")
         cols_to_encode = []
-        encode_info = []
-
         for col in df.columns:
-            if df[col].dtype == 'object':
+            if not pd.api.types.is_numeric_dtype(df[col]):
                 df[col] = df[col].astype(str)
-                unique_vals = df[col].nunique()
-                if unique_vals <= max_categories:
-                    cols_to_encode.append(col)
-                    encode_info.append((col, unique_vals))
-                else:
-                    print(f"    Столбец '{col}' пропущен: {unique_vals} уникальных значений > {max_categories}")
-
-        if cols_to_encode:
-            df = pd.get_dummies(df, columns=cols_to_encode, prefix_sep='_', drop_first=False, dtype=int)
-            for col, uv in encode_info:
-                new_cols = [c for c in df.columns if c.startswith(col + '_')]
-                encoded_summary.append((col, uv, new_cols))
-                print(f"    Столбец '{col}' закодирован -> {len(new_cols)} бинарных столбцов ({uv} уникальных)")
-        else:
-            print("    Нет категориальных столбцов для кодирования")
+                cols_to_encode.append(col)
+                print(f"    Столбец '{col}' добавлен для кодирования")
+        for col in cols_to_encode:
+            df[col] = df[col].str.strip()
+            df[col] = df[col].fillna('missing').replace('', 'missing')
+            df = pd.get_dummies(df, columns=[col], prefix_sep='_', drop_first=False, dtype=int)
+            print(
+                f"    Столбец '{col}' закодирован -> {len([c for c in df.columns if c.startswith(col + '_')])} бинарных столбцов")
+        if not cols_to_encode:
+            print("    Нет нечисловых столбцов для кодирования")
+    else:
+        print("  One-Hot кодирование отключено")
 
     numeric_columns = []
     non_numeric_columns = []
-
     for column in df.columns:
         try:
             df[column] = pd.to_numeric(df[column], errors='raise')
@@ -156,5 +150,4 @@ def preprocess_data(df, drop_first_column=False, fill_na_with_zero=True,
         details += f"\n  {column}: {df_final[column].dtype}"
 
     print(f"  Предобработка завершена: {df_final.shape[0]} строк, {df_final.shape[1]} столбцов")
-
     return df_final, details

@@ -107,7 +107,7 @@ export default function UploadAnalysis() {
             const response = await axios.post('http://localhost:8000/api/analyze/export-pdf', formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data',
-                    Authorization: `Bearer ${localStorage.getItem('token')}`
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
                 },
                 responseType: 'blob'
             });
