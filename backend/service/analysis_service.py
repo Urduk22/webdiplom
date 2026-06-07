@@ -207,7 +207,44 @@ def generate_results(df_processed, threshold, params, original_filename, process
         "original_filename": original_filename,
         "method": method
     }
+def generate_excel_report(results, df_processed, process_details, correlation_details):
+    import io
+    import pandas as pd
+    import os
 
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        selected_df = pd.DataFrame(results['selected_columns'], columns=['Выбранные столбцы'])
+        selected_df.to_excel(writer, sheet_name='Выбранные столбцы', index=False)
+
+        corr_path = os.path.join(RESULTS_DIR, results['correlation_file'])
+        if os.path.exists(corr_path):
+            corr_df = pd.read_csv(corr_path, index_col=0, sep=';', decimal=',')
+            corr_df.to_excel(writer, sheet_name='Корреляция')
+        else:
+            pd.DataFrame().to_excel(writer, sheet_name='Корреляция')
+
+        df_processed.head(100).to_excel(writer, sheet_name='Данные (первые 100)', index=False)
+
+        details_df = pd.DataFrame({
+            'Этап': ['Предобработка', 'Корреляция', 'Алгоритм'],
+            'Детали': [process_details, correlation_details, results['algorithm_details']]
+        })
+        details_df.to_excel(writer, sheet_name='Детали', index=False)
+
+        params_dict = results.get('params', {})
+        params_data = []
+        for k, v in params_dict.items():
+            params_data.append({'Параметр': k, 'Значение': v})
+        params_data.append({'Параметр': 'method', 'Значение': results.get('method', '')})
+        params_data.append({'Параметр': 'top_k', 'Значение': results.get('top_k', '')})
+        params_data.append({'Параметр': 'threshold', 'Значение': results.get('threshold', '')})
+        params_data.append({'Параметр': 'target_column', 'Значение': results.get('target_column', '')})
+        params_df = pd.DataFrame(params_data)
+        params_df.to_excel(writer, sheet_name='Параметры', index=False)
+
+    output.seek(0)
+    return output
 def generate_pdf_report_from_df(results, df_processed):
     with tempfile.TemporaryDirectory() as tmpdir:
         corr_file = results.get('correlation_file')

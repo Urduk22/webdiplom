@@ -126,6 +126,36 @@ export default function UploadAnalysis() {
             setLoading(false);
         }
     };
+    const exportToExcel = async () => {
+        if (!file) {
+            setError('Сначала выполните анализ');
+            return;
+        }
+        setLoading(true);
+        const formData = new FormData();
+        formData.append('file', file);
+        for (let [key, val] of Object.entries(params)) {
+            formData.append(key, val);
+        }
+        try {
+            const response = await axios.post('http://localhost:8000/api/analyze/export-excel', formData, {
+                headers: { 'Content-Type': 'multipart/form-data', Authorization: `Bearer ${localStorage.getItem('token')}` },
+                responseType: 'blob'
+            });
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', 'analysis_report.xlsx');
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+        } catch (err) {
+            alert('Ошибка экспорта Excel');
+        } finally {
+            setLoading(false);
+        }
+    };
 
     return (
         <Box>
@@ -208,6 +238,7 @@ export default function UploadAnalysis() {
                     <Box sx={{ my: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                         <Button variant="outlined" onClick={() => handleDownload(results.correlation_file)}>Скачать корреляцию (CSV)</Button>
                         <Button variant="outlined" onClick={() => handleDownload(results.algorithm_file)}>Скачать алгоритм (TXT)</Button>
+                        <Button variant="outlined" onClick={exportToExcel}>Экспорт в Excel</Button>
                         <Button variant="outlined" onClick={exportToPDF}>Экспорт в PDF</Button>
                     </Box>
 

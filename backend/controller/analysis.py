@@ -4,7 +4,8 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from database import get_db
 from backend.service.auth_service import get_current_user
-from backend.service.analysis_service import save_upload_file, generate_results, generate_pdf_report_from_df
+from backend.service.analysis_service import save_upload_file, generate_results, generate_pdf_report_from_df, \
+    generate_excel_report
 from core.csv_utils import read_file_auto
 from core.preprocessing import preprocess_data
 from core.correlation import apply_correlation_threshold
@@ -81,6 +82,76 @@ async def analyze_file(
     import os
     os.unlink(file_path)
     return results
+
+@router.post("/analyze/export-excel")
+async def export_analysis_excel(
+    file: UploadFile = File(...),
+    drop_first: bool = Form(False),
+    fill_na_zero: bool = Form(True),
+    encode_cat: bool = Form(False),
+    max_cat: int = Form(10),
+    threshold: float = Form(0.3),
+    n_launches: int = Form(10),
+    n_solutions: int = Form(100),
+    cap: int = Form(1000),
+    frac: float = Form(0.35),
+    q: float = Form(1.0),
+    target_column: str = Form(""),
+    method: str = Form("graph"),
+    top_k: int = Form(10),
+):
+    file_path, original_filename = save_upload_file(file)
+    try:
+        df, _, _ = read_file_auto(file_path, max_rows=None)
+    except Exception as e:
+        import os
+        os.unlink(file_path)
+        raise HTTPException(400, f"Ошибка чтения файла: {str(e)}")
+    df_processed, process_details = preprocess_data(
+        df,
+        drop_first_column=drop_first,
+        fill_na_with_zero=fill_na_zero,
+        encode_categorical=encode_cat,
+        max_categories=max_cat
+    )
+    if df_processed.empty:
+        import os
+        os.unlink(file_path)
+        raise HTTPException(400, "После предобработки не осталось данных")
+
+    target_col_name = None
+    if target_column and target_column.strip():
+        try:
+            col_idx = int(target_column) - 1
+            if 0 <= col_idx < len(df_processed.columns):
+                target_col_name = df_processed.columns[col_idx]
+        except ValueError:
+            pass
+
+    _, correlation_details = apply_correlation_threshold(df_processed, threshold)
+    params = {
+        "n_launches": n_launches,
+        "n_solutions": n_solutions,
+        "cap": cap,
+        "frac": frac,
+        "q": q
+    }
+    results = generate_results(
+        df_processed, threshold, params, original_filename,
+        process_details, correlation_details,
+        target_column=target_col_name,
+        method=method,
+        top_k=top_k
+    )
+    import os
+    os.unlink(file_path)
+
+    excel_buffer = generate_excel_report(results, df_processed, process_details, correlation_details)
+    return StreamingResponse(
+        excel_buffer,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=analysis_report.xlsx"}
+    )
 
 @router.options("/analyze/export-pdf")
 async def options_export_pdf():
